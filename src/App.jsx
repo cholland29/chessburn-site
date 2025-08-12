@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, Fragment } from "react";
 import * as ChessJS from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { DndProvider } from "react-dnd";
@@ -441,67 +441,75 @@ function importPgn(text) {
 
               <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
 
-              {/* Scrollable move list only */}
+              {/* Scrollable move list only (custom number column to avoid clipping) */}
               <div
                 ref={scrollRef}
                 style={{
                   flex: "1 1 auto",
                   overflowY: "auto",
                   overflowX: "hidden",
-                  minHeight: 0, // ensures flexbox allows scrolling area to shrink
+                  minHeight: 0,
                 }}
               >
                 {pairs.length === 0 ? (
                   <div style={{ color: "#999" }}>No moves yet.</div>
                 ) : (
-                  <ol start={baseFullmove} style={{ margin: 0, paddingLeft: 20 }}>
+                  <div
+                    role="list"
+                    aria-label="Moves"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "4ch 1fr 1fr", // number | white | black
+                      columnGap: 12,
+                      rowGap: 4,
+                      alignItems: "center",
+                    }}
+                  >
                     {pairs.map((pair, idx) => {
+                      const moveNo = baseFullmove + idx;
                       const whitePly = idx * 2;
                       const blackPly = whitePly + 1;
                       const isWhiteActive = currentPly - 1 === whitePly;
                       const isBlackActive = currentPly - 1 === blackPly;
 
                       return (
-                        <li key={idx} style={{ marginBottom: 4 }}>
-                          <div
+                        <Fragment key={idx}>
+                          {/* Number column (right-aligned with a dot) */}
+                          <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
+
+                          {/* White move */}
+                          <span
+                            ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
+                            onClick={() => pair[0] && jumpToPly(whitePly + 1)}
+                            title={pair[0] ? `Jump to ${pair[0]}` : ""}
                             style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr 1fr",
-                              columnGap: 14,
-                              alignItems: "center",
+                              cursor: pair[0] ? "pointer" : "default",
+                              background: isWhiteActive ? "#333" : "transparent",
+                              borderRadius: 6,
+                              padding: isWhiteActive ? "0 4px" : 0,
                             }}
                           >
-                            <span
-                              ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
-                              onClick={() => pair[0] && jumpToPly(whitePly + 1)}
-                              title={pair[0] ? `Jump to ${pair[0]}` : ""}
-                              style={{
-                                cursor: pair[0] ? "pointer" : "default",
-                                background: isWhiteActive ? "#333" : "transparent",
-                                borderRadius: 6,
-                                padding: isWhiteActive ? "0 4px" : 0,
-                              }}
-                            >
-                              {pair[0] || ""}
-                            </span>
-                            <span
-                              ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
-                              onClick={() => pair[1] && jumpToPly(blackPly + 1)}
-                              title={pair[1] ? `Jump to ${pair[1]}` : ""}
-                              style={{
-                                cursor: pair[1] ? "pointer" : "default",
-                                background: isBlackActive ? "#333" : "transparent",
-                                borderRadius: 6,
-                                padding: isBlackActive ? "0 4px" : 0,
-                              }}
-                            >
-                              {pair[1] || ""}
-                            </span>
-                          </div>
-                        </li>
+                            {pair[0] || ""}
+                          </span>
+
+                          {/* Black move */}
+                          <span
+                            ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
+                            onClick={() => pair[1] && jumpToPly(blackPly + 1)}
+                            title={pair[1] ? `Jump to ${pair[1]}` : ""}
+                            style={{
+                              cursor: pair[1] ? "pointer" : "default",
+                              background: isBlackActive ? "#333" : "transparent",
+                              borderRadius: 6,
+                              padding: isBlackActive ? "0 4px" : 0,
+                            }}
+                          >
+                            {pair[1] || ""}
+                          </span>
+                        </Fragment>
                       );
                     })}
-                  </ol>
+                  </div>
                 )}
               </div>
             </div>
