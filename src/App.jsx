@@ -1,43 +1,47 @@
-import { useEffect, useRef, useState } from "react";
-import { Chess } from "chess.js";
+import { useEffect, useState } from "react";
+import * as ChessJS from "chess.js";
 import { Chessboard } from "react-chessboard";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 
-const MAX_BOARD_PX = 360; // tweak this to your taste (e.g., 320–420)
+const Chess = ChessJS.Chess || ChessJS.default;
+
+// Helper to compute a nice board width from the viewport
+function computeBoardWidth() {
+  const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+  // clamp between 280 and 420 px, using ~90% of viewport width
+  return Math.max(280, Math.min(420, Math.floor(vw * 0.9)));
+}
 
 export default function App() {
   const [game, setGame] = useState(() => new Chess());
-  const [boardWidth, setBoardWidth] = useState(MAX_BOARD_PX);
-  const containerRef = useRef(null);
+  const [boardWidth, setBoardWidth] = useState(computeBoardWidth());
 
-  // Make board width follow the container width (up to MAX_BOARD_PX)
+  // Responsive: recalc on resize/orientation change
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const update = () => {
-      const w = el.clientWidth || window.innerWidth;
-      setBoardWidth(Math.min(MAX_BOARD_PX, Math.floor(w)));
-    };
-
-    update(); // run once on mount
-
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    window.addEventListener("orientationchange", update); // mobile safety
-
+    const onResize = () => setBoardWidth(computeBoardWidth());
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    onResize(); // ensure first paint is correct
     return () => {
-      ro.disconnect();
-      window.removeEventListener("orientationchange", update);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
     };
   }, []);
 
-  // Handle drag-drop with chess.js; return true if legal, false to snap back
-  function onPieceDrop(sourceSquare, targetSquare) {
-    const next = new Chess(game.fen()); // copy current state
-    const move = next.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
-    if (move == null) return false;     // illegal → snap back
-    setGame(next);                       // legal → update position
-    return true;
+  // Handle drag-drop; return true to keep, false to snap back
+  function onPieceDrop(from, to) {
+    try {
+      const next = new Chess(game.fen());
+      const move = next.move({ from, to, promotion: "q" });
+      if (!move) return false;  // illegal → snap back
+      setGame(next);            // legal → update position
+      return true;
+    } catch (err) {
+      // If chess.js throws, just snap back and keep going
+      console.debug("illegal move (caught):", err);
+      return false;
+    }
   }
 
   function reset() {
@@ -51,7 +55,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: "1rem" }}>
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "1rem" }}>
       <h1 style={{ textAlign: "center", marginBottom: 8 }}>Chessburn</h1>
       <p style={{ textAlign: "center", color: "#555", marginTop: 0 }}>
         Burn chess patterns into your brain.
@@ -62,14 +66,15 @@ export default function App() {
         <button onClick={undo}>Undo</button>
       </div>
 
-      <div ref={containerRef}>
-        <Chessboard
-          position={game.fen()}
-          onPieceDrop={onPieceDrop}
-          arePiecesDraggable={true}
-          boardWidth={boardWidth}
-        />
-      </div>
+      <DndProvider backend={HTML5Backend}>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <Chessboard
+            position={game.fen()}
+            onPieceDrop={onPieceDrop}
+            boardWidth={boardWidth}
+          />
+        </div>
+      </DndProvider>
     </div>
   );
 }
