@@ -6,6 +6,13 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 
 const Chess = ChessJS.Chess || ChessJS.default;
 
+// Layout constants
+const SIDE_W = 260;     // fixed width for right panel
+const GAP = 16;         // gap between board and panel
+const BOARD_MIN = 280;
+const BOARD_MAX = 520;
+
+// Test FENs
 const TEST_FENS = [
   { name: "Start", fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" },
   { name: "After 1. e4", fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1" },
@@ -17,23 +24,18 @@ const TEST_FENS = [
   { name: "Bare kings", fen: "8/8/8/8/8/8/8/4K2k w - - 0 1" },
 ];
 
-const SIDE_W = 220;     // right panel width
-const GAP = 16;
-const BOARD_MIN = 280;
-const BOARD_MAX = 520;
-
 export default function App() {
   const [game, setGame] = useState(() => new Chess());
   const [fenText, setFenText] = useState(() => game.fen());
   const [fenError, setFenError] = useState("");
   const [lastLoadedName, setLastLoadedName] = useState("");
-  const [moves, setMoves] = useState([]); // SAN
-  const [lastMove, setLastMove] = useState(null); // {from,to}
+  const [moves, setMoves] = useState([]);           // SAN array
+  const [lastMove, setLastMove] = useState(null);   // {from,to}
   const [boardOrientation, setBoardOrientation] = useState("white");
 
   const rowRef = useRef(null);
   const [boardWidth, setBoardWidth] = useState(360);
-  const [stack, setStack] = useState(false); // stack on small screens
+  const [stack, setStack] = useState(false);        // stack on small screens
 
   // FEN from URL (?fen=...)
   useEffect(() => {
@@ -51,13 +53,14 @@ export default function App() {
     } catch {}
   }, []);
 
-  // Layout: compute board width from container minus side panel
+  // Board width with fixed side panel reservation
   useEffect(() => {
     function recompute() {
       const cw = rowRef.current?.clientWidth ?? window.innerWidth;
       const available = cw - SIDE_W - GAP;
       const fitsSide = available >= BOARD_MIN;
       setStack(!fitsSide);
+
       const w = fitsSide
         ? Math.min(BOARD_MAX, available)
         : Math.max(BOARD_MIN, Math.min(420, Math.floor(window.innerWidth * 0.9)));
@@ -156,7 +159,7 @@ export default function App() {
     } catch {}
   }
 
-  // Last-move highlight styles
+  // Last-move highlight
   const customSquareStyles = lastMove
     ? {
         [lastMove.from]: {
@@ -168,13 +171,16 @@ export default function App() {
       }
     : {};
 
+  // Build SAN pairs for the move list
   const pairs = [];
-  for (let i = 0; i < moves.length; i += 2) pairs.push([moves[i], moves[i + 1]].filter(Boolean));
+  for (let i = 0; i < moves.length; i += 2) {
+    pairs.push([moves[i], moves[i + 1]].filter(Boolean));
+  }
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
       <h1 style={{ textAlign: "center", marginBottom: 8 }}>Chessburn</h1>
-      <p style={{ textAlign: "center", color: "#555", marginTop: 0 }}>
+      <p style={{ textAlign: "center", color: "#bbb", marginTop: 0 }}>
         Burn chess patterns into your brain.
       </p>
 
@@ -210,33 +216,41 @@ export default function App() {
             />
           </div>
 
-          {/* Right-side panel */}
+          {/* Right-side panel: single column with vertical scroll */}
           <aside
             style={{
               width: stack ? "100%" : SIDE_W,
+              height: stack ? 200 : boardWidth,
               flex: "0 0 auto",
+              display: "flex",
+              alignItems: "stretch",
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Moves</div>
             <div
               style={{
-                border: "1px solid #eee",
+                border: "1px solid #2a2a2a",
                 borderRadius: 8,
                 padding: 8,
-                maxHeight: stack ? 200 : boardWidth, // match board height on wide screens
-                overflowY: "auto",
-                background: "#fafafa",
-                color: "#222"
+                height: "100%",
+                background: "#111",
+                color: "#eee",
+                overflowY: "auto",   // ← vertical scroll
+                overflowX: "hidden",
+                width: "100%",
               }}
             >
-              <ol style={{ margin: 0, paddingLeft: 20 }}>
-                {pairs.map((pair, idx) => (
-                  <li key={idx} style={{ marginBottom: 2 }}>
-                    {pair.join(" ")}
-                  </li>
-                ))}
-              </ol>
-              {!pairs.length && <div style={{ color: "#777" }}>No moves yet.</div>}
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Moves</div>
+              {pairs.length === 0 ? (
+                <div style={{ color: "#999" }}>No moves yet.</div>
+              ) : (
+                <ol style={{ margin: 0, paddingLeft: 20 }}>
+                  {pairs.map((pair, idx) => (
+                    <li key={idx} style={{ marginBottom: 4 }}>
+                      {pair.join(" ")}
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
           </aside>
         </div>
@@ -264,7 +278,9 @@ export default function App() {
             padding: "10px",
             fontFamily: "monospace",
             borderRadius: 6,
-            border: fenError ? "2px solid #c62828" : "1px solid #ccc",
+            border: fenError ? "2px solid #7f1d1d" : "1px solid #333",
+            background: "#111",
+            color: "#eee",
           }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -285,11 +301,11 @@ export default function App() {
           <button onClick={loadRandomFen}>Random test FEN</button>
         </div>
         {lastLoadedName && (
-          <div style={{ marginTop: 6, color: "#555" }}>
+          <div style={{ marginTop: 6, color: "#bbb" }}>
             Loaded: <strong>{lastLoadedName}</strong>
           </div>
         )}
-        {fenError && <div style={{ color: "#c62828", marginTop: 6 }}>{fenError}</div>}
+        {fenError && <div style={{ color: "#fca5a5", marginTop: 6 }}>{fenError}</div>}
       </div>
     </div>
   );
