@@ -25,17 +25,27 @@ const TEST_FENS = [
 ];
 
 export default function App() {
-  const [game, setGame] = useState(() => new Chess());
+  // Base position (updates on reset/load)
+  const [baseFen, setBaseFen] = useState(() => new Chess().fen());
+
+  const [game, setGame] = useState(() => new Chess()); // current displayed position
   const [fenText, setFenText] = useState(() => game.fen());
   const [fenError, setFenError] = useState("");
   const [lastLoadedName, setLastLoadedName] = useState("");
-  const [moves, setMoves] = useState([]);           // SAN array
+
+  const [moves, setMoves] = useState([]);           // SAN array since baseFen
+  const [currentPly, setCurrentPly] = useState(0);  // index into moves (0..moves.length)
   const [lastMove, setLastMove] = useState(null);   // {from,to}
+
   const [boardOrientation, setBoardOrientation] = useState("white");
 
   const rowRef = useRef(null);
   const [boardWidth, setBoardWidth] = useState(360);
   const [stack, setStack] = useState(false);        // stack on small screens
+
+  // Move-list scrolling
+  const scrollRef = useRef(null);
+  const activeMoveRef = useRef(null);
 
   // FEN from URL (?fen=...)
   useEffect(() => {
@@ -43,9 +53,12 @@ export default function App() {
       const qfen = new URLSearchParams(window.location.search).get("fen");
       if (qfen) {
         const next = new Chess(qfen);
+        const fen = next.fen();
+        setBaseFen(fen);
         setGame(next);
-        setFenText(next.fen());
+        setFenText(fen);
         setMoves([]);
+        setCurrentPly(0);
         setLastMove(null);
         setFenError("");
         setLastLoadedName("From URL");
@@ -78,6 +91,13 @@ export default function App() {
     };
   }, []);
 
+  // Auto-scroll the move list to keep the active move in view
+  useEffect(() => {
+    const el = activeMoveRef.current;
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [currentPly, moves.length, stack, boardWidth]);
+
   // Helpers
   function validateFen(fen) {
     if (Chess.validate_fen) return Chess.validate_fen(fen);
@@ -85,15 +105,38 @@ export default function App() {
     catch (e) { return { valid: false, error: e?.message || "Invalid FEN" }; }
   }
 
+  function positionAtPly(ply) {
+    const ch = new Chess(baseFen);
+    for (let i = 0; i < Math.min(ply, moves.length); i++) ch.move(moves[i]);
+    const hist = ch.history({ verbose: true });
+    const lm = hist.length ? { from: hist[hist.length - 1].from, to: hist[hist.length - 1].to } : null;
+    return { ch, lm };
+  }
+
+  function jumpToPly(ply) {
+    const { ch, lm } = positionAtPly(ply);
+    setGame(ch);
+    setFenText(ch.fen());
+    setCurrentPly(ply);
+    setLastMove(lm);
+  }
+
   function onPieceDrop(from, to) {
     try {
+      // start from the *current* displayed position
       const next = new Chess(game.fen());
       const moved = next.move({ from, to, promotion: "q" });
       if (!moved) return false;
+
+      // trim future moves if we had jumped back, then append
+      const newMoves = moves.slice(0, currentPly);
+      newMoves.push(moved.san);
+
+      setMoves(newMoves);
+      setCurrentPly(newMoves.length);
       setGame(next);
       setFenText(next.fen());
       setFenError("");
-      setMoves((m) => [...m, moved.san]);
       setLastMove({ from, to });
       return true;
     } catch {
@@ -102,22 +145,27 @@ export default function App() {
   }
 
   function reset() {
-    const next = new Chess();
-    setGame(next);
-    setFenText(next.fen());
+    const start = new Chess();
+    const fen = start.fen();
+    setBaseFen(fen);
+    setGame(start);
+    setFenText(fen);
     setFenError("");
     setMoves([]);
+    setCurrentPly(0);
     setLastMove(null);
     setLastLoadedName("");
   }
 
   function undo() {
-    const next = new Chess(game.fen());
-    next.undo();
-    setGame(next);
-    setFenText(next.fen());
-    setMoves((m) => m.slice(0, -1));
-    setLastMove(null);
+    if (moves.length === 0) return;
+    const newMoves = moves.slice(0, -1);
+    setMoves(newMoves);
+    setCurrentPly(newMoves.length);
+    const { ch, lm } = positionAtPly(newMoves.length);
+    setGame(ch);
+    setFenText(ch.fen());
+    setLastMove(lm);
   }
 
   function loadFen() {
@@ -125,10 +173,13 @@ export default function App() {
     const chk = validateFen(raw);
     if (!chk.valid) { setFenError(chk.error || "Invalid FEN."); return; }
     const next = new Chess(raw);
+    const fen = next.fen();
+    setBaseFen(fen);
     setGame(next);
-    setFenText(next.fen());
+    setFenText(fen);
     setFenError("");
     setMoves([]);
+    setCurrentPly(0);
     setLastMove(null);
     setLastLoadedName("Custom FEN");
   }
@@ -137,10 +188,13 @@ export default function App() {
     const pick = TEST_FENS[Math.floor(Math.random() * TEST_FENS.length)];
     try {
       const next = new Chess(pick.fen);
+      const fen = next.fen();
+      setBaseFen(fen);
       setGame(next);
-      setFenText(next.fen());
+      setFenText(fen);
       setFenError("");
       setMoves([]);
+      setCurrentPly(0);
       setLastMove(null);
       setLastLoadedName(pick.name);
     } catch (e) {
@@ -162,12 +216,8 @@ export default function App() {
   // Last-move highlight
   const customSquareStyles = lastMove
     ? {
-        [lastMove.from]: {
-          background: "radial-gradient(circle, rgba(255,215,0,.45) 36%, transparent 40%)",
-        },
-        [lastMove.to]: {
-          background: "radial-gradient(circle, rgba(50,205,50,.45) 36%, transparent 40%)",
-        },
+        [lastMove.from]: { background: "radial-gradient(circle, rgba(255,215,0,.45) 36%, transparent 40%)" },
+        [lastMove.to]:   { background: "radial-gradient(circle, rgba(50,205,50,.45) 36%, transparent 40%)" },
       }
     : {};
 
@@ -176,6 +226,15 @@ export default function App() {
   for (let i = 0; i < moves.length; i += 2) {
     pairs.push([moves[i], moves[i + 1]].filter(Boolean));
   }
+
+  // Move number offset (from base FEN’s 6th field)
+  const baseFullmove = (() => {
+    try { return parseInt(baseFen.split(" ")[5] || "1", 10) || 1; } catch { return 1; }
+  })();
+
+  // Step controls
+  const canBack = currentPly > 0;
+  const canForward = currentPly < moves.length;
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
@@ -216,7 +275,7 @@ export default function App() {
             />
           </div>
 
-          {/* Right-side panel: single column with vertical scroll */}
+          {/* Right-side panel: single column with vertical scroll + controls + clickable moves */}
           <aside
             style={{
               width: stack ? "100%" : SIDE_W,
@@ -234,21 +293,91 @@ export default function App() {
                 height: "100%",
                 background: "#111",
                 color: "#eee",
-                overflowY: "auto",   // ← vertical scroll
+                overflowY: "auto",
                 overflowX: "hidden",
                 width: "100%",
               }}
+              ref={scrollRef}
             >
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>Moves</div>
+              {/* Step controls */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button
+                  onClick={() => canBack && jumpToPly(currentPly - 1)}
+                  disabled={!canBack}
+                  style={{ opacity: canBack ? 1 : 0.5 }}
+                  title="Step back (◀)"
+                >
+                  ◀
+                </button>
+                <button
+                  onClick={() => canForward && jumpToPly(currentPly + 1)}
+                  disabled={!canForward}
+                  style={{ opacity: canForward ? 1 : 0.5 }}
+                  title="Step forward (▶)"
+                >
+                  ▶
+                </button>
+                <button
+                  onClick={() => canForward && jumpToPly(moves.length)}
+                  disabled={!canForward}
+                  style={{ opacity: canForward ? 1 : 0.5 }}
+                  title="Go to latest (⏭)"
+                >
+                  ⏭
+                </button>
+              </div>
+
+              <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
               {pairs.length === 0 ? (
                 <div style={{ color: "#999" }}>No moves yet.</div>
               ) : (
-                <ol style={{ margin: 0, paddingLeft: 20 }}>
-                  {pairs.map((pair, idx) => (
-                    <li key={idx} style={{ marginBottom: 4 }}>
-                      {pair.join(" ")}
-                    </li>
-                  ))}
+                <ol start={baseFullmove} style={{ margin: 0, paddingLeft: 20 }}>
+                  {pairs.map((pair, idx) => {
+                    const whitePly = idx * 2;
+                    const blackPly = whitePly + 1;
+                    const isWhiteActive = currentPly - 1 === whitePly;
+                    const isBlackActive = currentPly - 1 === blackPly;
+
+                    return (
+                      <li key={idx} style={{ marginBottom: 4 }}>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            columnGap: 14,
+                            alignItems: "center",
+                          }}
+                        >
+                          <span
+                            ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
+                            onClick={() => pair[0] && jumpToPly(whitePly + 1)}
+                            title={pair[0] ? `Jump to ${pair[0]}` : ""}
+                            style={{
+                              cursor: pair[0] ? "pointer" : "default",
+                              background: isWhiteActive ? "#333" : "transparent",
+                              borderRadius: 6,
+                              padding: isWhiteActive ? "0 4px" : 0,
+                            }}
+                          >
+                            {pair[0] || ""}
+                          </span>
+                          <span
+                            ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
+                            onClick={() => pair[1] && jumpToPly(blackPly + 1)}
+                            title={pair[1] ? `Jump to ${pair[1]}` : ""}
+                            style={{
+                              cursor: pair[1] ? "pointer" : "default",
+                              background: isBlackActive ? "#333" : "transparent",
+                              borderRadius: 6,
+                              padding: isBlackActive ? "0 4px" : 0,
+                            }}
+                          >
+                            {pair[1] || ""}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
             </div>
@@ -288,10 +417,13 @@ export default function App() {
           <button
             onClick={() => {
               const start = new Chess();
+              const fen = start.fen();
+              setBaseFen(fen);
               setGame(start);
-              setFenText(start.fen());
+              setFenText(fen);
               setFenError("");
               setMoves([]);
+              setCurrentPly(0);
               setLastMove(null);
               setLastLoadedName("Start");
             }}
