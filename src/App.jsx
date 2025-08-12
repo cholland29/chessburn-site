@@ -408,7 +408,7 @@ function importPgn(text) {
             />
           </div>
 
-          {/* Right-side panel: single column with vertical scroll + controls + clickable moves */}
+          {/* Right-side panel: header (static) + move list (scrolls) */}
           <aside
             style={{
               width: stack ? "100%" : SIDE_W,
@@ -422,17 +422,16 @@ function importPgn(text) {
               style={{
                 border: "1px solid #2a2a2a",
                 borderRadius: 8,
-                padding: 8,
-                height: "100%",
                 background: "#111",
                 color: "#eee",
-                overflowY: "auto",
-                overflowX: "hidden",
+                height: "100%",
                 width: "100%",
+                padding: 8,
+                display: "flex",
+                flexDirection: "column",   // ← header stays, list fills below
               }}
-              ref={scrollRef}
             >
-              {/* Step controls */}
+              {/* Step controls (static header, never scrolls) */}
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                 <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
                 <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
@@ -441,58 +440,70 @@ function importPgn(text) {
               </div>
 
               <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
-              {pairs.length === 0 ? (
-                <div style={{ color: "#999" }}>No moves yet.</div>
-              ) : (
-                <ol start={baseFullmove} style={{ margin: 0, paddingLeft: 20 }}>
-                  {pairs.map((pair, idx) => {
-                    const whitePly = idx * 2;
-                    const blackPly = whitePly + 1;
-                    const isWhiteActive = currentPly - 1 === whitePly;
-                    const isBlackActive = currentPly - 1 === blackPly;
 
-                    return (
-                      <li key={idx} style={{ marginBottom: 4 }}>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            columnGap: 14,
-                            alignItems: "center",
-                          }}
-                        >
-                          <span
-                            ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
-                            onClick={() => pair[0] && jumpToPly(whitePly + 1)}
-                            title={pair[0] ? `Jump to ${pair[0]}` : ""}
+              {/* Scrollable move list only */}
+              <div
+                ref={scrollRef}
+                style={{
+                  flex: "1 1 auto",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  minHeight: 0, // ensures flexbox allows scrolling area to shrink
+                }}
+              >
+                {pairs.length === 0 ? (
+                  <div style={{ color: "#999" }}>No moves yet.</div>
+                ) : (
+                  <ol start={baseFullmove} style={{ margin: 0, paddingLeft: 20 }}>
+                    {pairs.map((pair, idx) => {
+                      const whitePly = idx * 2;
+                      const blackPly = whitePly + 1;
+                      const isWhiteActive = currentPly - 1 === whitePly;
+                      const isBlackActive = currentPly - 1 === blackPly;
+
+                      return (
+                        <li key={idx} style={{ marginBottom: 4 }}>
+                          <div
                             style={{
-                              cursor: pair[0] ? "pointer" : "default",
-                              background: isWhiteActive ? "#333" : "transparent",
-                              borderRadius: 6,
-                              padding: isWhiteActive ? "0 4px" : 0,
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              columnGap: 14,
+                              alignItems: "center",
                             }}
                           >
-                            {pair[0] || ""}
-                          </span>
-                          <span
-                            ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
-                            onClick={() => pair[1] && jumpToPly(blackPly + 1)}
-                            title={pair[1] ? `Jump to ${pair[1]}` : ""}
-                            style={{
-                              cursor: pair[1] ? "pointer" : "default",
-                              background: isBlackActive ? "#333" : "transparent",
-                              borderRadius: 6,
-                              padding: isBlackActive ? "0 4px" : 0,
-                            }}
-                          >
-                            {pair[1] || ""}
-                          </span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
+                            <span
+                              ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
+                              onClick={() => pair[0] && jumpToPly(whitePly + 1)}
+                              title={pair[0] ? `Jump to ${pair[0]}` : ""}
+                              style={{
+                                cursor: pair[0] ? "pointer" : "default",
+                                background: isWhiteActive ? "#333" : "transparent",
+                                borderRadius: 6,
+                                padding: isWhiteActive ? "0 4px" : 0,
+                              }}
+                            >
+                              {pair[0] || ""}
+                            </span>
+                            <span
+                              ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
+                              onClick={() => pair[1] && jumpToPly(blackPly + 1)}
+                              title={pair[1] ? `Jump to ${pair[1]}` : ""}
+                              style={{
+                                cursor: pair[1] ? "pointer" : "default",
+                                background: isBlackActive ? "#333" : "transparent",
+                                borderRadius: 6,
+                                padding: isBlackActive ? "0 4px" : 0,
+                              }}
+                            >
+                              {pair[1] || ""}
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
             </div>
           </aside>
         </div>
