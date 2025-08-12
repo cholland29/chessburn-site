@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as ChessJS from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
-// chess.js export compatibility
 const Chess = ChessJS.Chess || ChessJS.default;
 
 const TEST_FENS = [
@@ -18,76 +17,80 @@ const TEST_FENS = [
   { name: "Bare kings", fen: "8/8/8/8/8/8/8/4K2k w - - 0 1" },
 ];
 
-function computeBoardWidth() {
-  const vw = typeof window !== "undefined" ? window.innerWidth : 360;
-  return Math.max(280, Math.min(420, Math.floor(vw * 0.9)));
-}
+const SIDE_W = 220;     // right panel width
+const GAP = 16;
+const BOARD_MIN = 280;
+const BOARD_MAX = 520;
 
 export default function App() {
   const [game, setGame] = useState(() => new Chess());
-  const [boardWidth, setBoardWidth] = useState(computeBoardWidth());
-  const [boardOrientation, setBoardOrientation] = useState("white"); // "white" | "black"
-
-
-  // FEN panel
   const [fenText, setFenText] = useState(() => game.fen());
   const [fenError, setFenError] = useState("");
   const [lastLoadedName, setLastLoadedName] = useState("");
+  const [moves, setMoves] = useState([]); // SAN
+  const [lastMove, setLastMove] = useState(null); // {from,to}
+  const [boardOrientation, setBoardOrientation] = useState("white");
 
-  // Moves panel
-  const [moves, setMoves] = useState([]); // array of SAN strings
-  const [lastMove, setLastMove] = useState(null); // {from, to}
+  const rowRef = useRef(null);
+  const [boardWidth, setBoardWidth] = useState(360);
+  const [stack, setStack] = useState(false); // stack on small screens
 
-  // Load FEN from URL (?fen=...)
+  // FEN from URL (?fen=...)
   useEffect(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const qfen = params.get("fen");
+      const qfen = new URLSearchParams(window.location.search).get("fen");
       if (qfen) {
         const next = new Chess(qfen);
         setGame(next);
         setFenText(next.fen());
+        setMoves([]);
+        setLastMove(null);
         setFenError("");
-        setMoves([]); // unknown history from FEN alone
         setLastLoadedName("From URL");
       }
-    } catch (e) {
-      // ignore bad URL FEN
-    }
+    } catch {}
   }, []);
 
-  // Responsive sizing
+  // Layout: compute board width from container minus side panel
   useEffect(() => {
-    const onResize = () => setBoardWidth(computeBoardWidth());
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
-    onResize();
+    function recompute() {
+      const cw = rowRef.current?.clientWidth ?? window.innerWidth;
+      const available = cw - SIDE_W - GAP;
+      const fitsSide = available >= BOARD_MIN;
+      setStack(!fitsSide);
+      const w = fitsSide
+        ? Math.min(BOARD_MAX, available)
+        : Math.max(BOARD_MIN, Math.min(420, Math.floor(window.innerWidth * 0.9)));
+      setBoardWidth(w);
+    }
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    if (rowRef.current) ro.observe(rowRef.current);
+    window.addEventListener("resize", recompute);
+    window.addEventListener("orientationchange", recompute);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
+      ro.disconnect();
+      window.removeEventListener("resize", recompute);
+      window.removeEventListener("orientationchange", recompute);
     };
   }, []);
 
   // Helpers
   function validateFen(fen) {
     if (Chess.validate_fen) return Chess.validate_fen(fen);
-    try {
-      new Chess(fen);
-      return { valid: true, error: null };
-    } catch (e) {
-      return { valid: false, error: e?.message || "Invalid FEN" };
-    }
+    try { new Chess(fen); return { valid: true }; }
+    catch (e) { return { valid: false, error: e?.message || "Invalid FEN" }; }
   }
 
   function onPieceDrop(from, to) {
     try {
       const next = new Chess(game.fen());
       const moved = next.move({ from, to, promotion: "q" });
-      if (!moved) return false; // illegal -> snap back
+      if (!moved) return false;
       setGame(next);
       setFenText(next.fen());
       setFenError("");
-      setMoves((prev) => [...prev, moved.san]); // track SAN
+      setMoves((m) => [...m, moved.san]);
       setLastMove({ from, to });
       return true;
     } catch {
@@ -110,23 +113,19 @@ export default function App() {
     next.undo();
     setGame(next);
     setFenText(next.fen());
-    setMoves((prev) => prev.slice(0, -1));
-    // best-effort last-move from remaining SANs (optional)
+    setMoves((m) => m.slice(0, -1));
     setLastMove(null);
   }
 
   function loadFen() {
     const raw = fenText.trim().replace(/\s+/g, " ");
     const chk = validateFen(raw);
-    if (!chk.valid) {
-      setFenError(chk.error || "Invalid FEN.");
-      return;
-    }
+    if (!chk.valid) { setFenError(chk.error || "Invalid FEN."); return; }
     const next = new Chess(raw);
     setGame(next);
     setFenText(next.fen());
     setFenError("");
-    setMoves([]); // history unknown from FEN alone
+    setMoves([]);
     setLastMove(null);
     setLastLoadedName("Custom FEN");
   }
@@ -149,7 +148,6 @@ export default function App() {
   async function copyCurrentFen() {
     try { await navigator.clipboard.writeText(game.fen()); } catch {}
   }
-
   async function copyShareLink() {
     try {
       const url = new URL(window.location.href);
@@ -158,31 +156,23 @@ export default function App() {
     } catch {}
   }
 
-  // Last-move highlight
+  // Last-move highlight styles
   const customSquareStyles = lastMove
     ? {
         [lastMove.from]: {
-          background:
-            "radial-gradient(circle, rgba(255,215,0,.45) 36%, transparent 40%)",
+          background: "radial-gradient(circle, rgba(255,215,0,.45) 36%, transparent 40%)",
         },
         [lastMove.to]: {
-          background:
-            "radial-gradient(circle, rgba(50,205,50,.45) 36%, transparent 40%)",
+          background: "radial-gradient(circle, rgba(50,205,50,.45) 36%, transparent 40%)",
         },
       }
     : {};
 
-  // Render a lightweight move list (1. e4 e5 2. Nf3 ...)
-  function movesToPairs(arr) {
-    const pairs = [];
-    for (let i = 0; i < arr.length; i += 2) {
-      pairs.push([arr[i], arr[i + 1]].filter(Boolean));
-    }
-    return pairs;
-  }
+  const pairs = [];
+  for (let i = 0; i < moves.length; i += 2) pairs.push([moves[i], moves[i + 1]].filter(Boolean));
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "1rem" }}>
+    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
       <h1 style={{ textAlign: "center", marginBottom: 8 }}>Chessburn</h1>
       <p style={{ textAlign: "center", color: "#555", marginTop: 0 }}>
         Burn chess patterns into your brain.
@@ -199,27 +189,56 @@ export default function App() {
       </div>
 
       <DndProvider backend={HTML5Backend}>
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", justifyContent: "center", flexWrap: "wrap" }}>
-          <Chessboard
-            position={game.fen()}
-            onPieceDrop={onPieceDrop}
-            boardWidth={boardWidth}
-            boardOrientation={boardOrientation}
-            customSquareStyles={customSquareStyles}
-          />
-
-
-          {/* Simple move list */}
-          <div style={{ minWidth: 200 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Moves</div>
-            <ol style={{ margin: 0, paddingLeft: 20 }}>
-              {movesToPairs(moves).map((pair, idx) => (
-                <li key={idx} style={{ marginBottom: 2 }}>
-                  {pair.join(" ")}
-                </li>
-              ))}
-            </ol>
+        <div
+          ref={rowRef}
+          style={{
+            display: "flex",
+            flexDirection: stack ? "column" : "row",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            gap: GAP,
+          }}
+        >
+          {/* Board */}
+          <div style={{ flex: "0 0 auto" }}>
+            <Chessboard
+              position={game.fen()}
+              onPieceDrop={onPieceDrop}
+              boardWidth={boardWidth}
+              boardOrientation={boardOrientation}
+              customSquareStyles={customSquareStyles}
+            />
           </div>
+
+          {/* Right-side panel */}
+          <aside
+            style={{
+              width: stack ? "100%" : SIDE_W,
+              flex: "0 0 auto",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Moves</div>
+            <div
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 8,
+                padding: 8,
+                maxHeight: stack ? 200 : boardWidth, // match board height on wide screens
+                overflowY: "auto",
+                background: "#fafafa",
+                color: "#222"
+              }}
+            >
+              <ol style={{ margin: 0, paddingLeft: 20 }}>
+                {pairs.map((pair, idx) => (
+                  <li key={idx} style={{ marginBottom: 2 }}>
+                    {pair.join(" ")}
+                  </li>
+                ))}
+              </ol>
+              {!pairs.length && <div style={{ color: "#777" }}>No moves yet.</div>}
+            </div>
+          </aside>
         </div>
       </DndProvider>
 
