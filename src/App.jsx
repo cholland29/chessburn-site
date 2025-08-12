@@ -236,6 +236,35 @@ export default function App() {
   const canBack = currentPly > 0;
   const canForward = currentPly < moves.length;
 
+  // --- Step helpers (reuse jumpToPly) ---
+  function stepBack()    { if (currentPly > 0)               jumpToPly(currentPly - 1); }
+  function stepForward() { if (currentPly < moves.length)    jumpToPly(currentPly + 1); }
+  function goLatest()    { if (currentPly < moves.length)    jumpToPly(moves.length); }
+  function goStart()     { if (currentPly !== 0)             jumpToPly(0); }
+
+  // --- Keyboard shortcuts ---
+  // ← : back    → : forward    Home : start    End : latest    F : flip board
+  useEffect(() => {
+    function onKey(e) {
+      const t = document.activeElement;
+      const tag = t && t.tagName ? t.tagName.toLowerCase() : "";
+      const typing = (t && (t.isContentEditable || tag === "input" || tag === "textarea"));
+      if (typing) return; // don't hijack while typing
+
+      if (e.key === "ArrowLeft")  { e.preventDefault(); stepBack(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
+      else if (e.key === "Home")  { e.preventDefault(); goStart(); }
+      else if (e.key === "End")   { e.preventDefault(); goLatest(); }
+      else if (e.key === "f" || e.key === "F") {
+        // flip board (no preventDefault so browser Find still works with Cmd/Ctrl+F)
+        setBoardOrientation(o => (o === "white" ? "black" : "white"));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentPly, moves.length]);
+
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
       <h1 style={{ textAlign: "center", marginBottom: 8 }}>Chessburn</h1>
@@ -301,30 +330,9 @@ export default function App() {
             >
               {/* Step controls */}
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <button
-                  onClick={() => canBack && jumpToPly(currentPly - 1)}
-                  disabled={!canBack}
-                  style={{ opacity: canBack ? 1 : 0.5 }}
-                  title="Step back (◀)"
-                >
-                  ◀
-                </button>
-                <button
-                  onClick={() => canForward && jumpToPly(currentPly + 1)}
-                  disabled={!canForward}
-                  style={{ opacity: canForward ? 1 : 0.5 }}
-                  title="Step forward (▶)"
-                >
-                  ▶
-                </button>
-                <button
-                  onClick={() => canForward && jumpToPly(moves.length)}
-                  disabled={!canForward}
-                  style={{ opacity: canForward ? 1 : 0.5 }}
-                  title="Go to latest (⏭)"
-                >
-                  ⏭
-                </button>
+                <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
+                <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
+                <button onClick={goLatest}    disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Go to latest (End)">⏭</button>
               </div>
 
               <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
