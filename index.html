@@ -1,45 +1,26 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Chessburn — Coming Soon</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="style.css">
-  <link rel="canonical" href="https://www.chessburn.com/">
-  <meta name="description" content="Chessburn — Burn chess patterns into your brain.">
-  <meta property="og:title" content="Chessburn">
-  <meta property="og:description" content="Burn chess patterns into your brain.">
-  <meta property="og:url" content="https://www.chessburn.com/">
-  <link rel="icon" href="/favicon.ico">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chessburn — Coming Soon</title>
 
-  <!-- chessboard.js CSS -->
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css"
-  />
-</head>
-<body>
-  <div class="wrap">
-    <h1>Chessburn</h1>
-    <p>Burn chess patterns into your brain. Coming soon.</p>
-
-    <div id="board"></div>
-
-    <form name="notify" method="POST" data-netlify="true" action="/success">
+    <!-- Your SEO -->
+    <link rel="canonical" href="https://www.chessburn.com/" />
+    <meta name="description" content="Chessburn — Burn chess patterns into your brain." />
+    <meta property="og:title" content="Chessburn" />
+    <meta property="og:description" content="Burn chess patterns into your brain." />
+    <meta property="og:url" content="https://www.chessburn.com/" />
+  </head>
+  <body>
+    <!-- Hidden Netlify form so Netlify registers it at build time -->
+    <form name="notify" method="POST" data-netlify="true" action="/success" hidden>
       <input type="hidden" name="form-name" value="notify" />
-      <input type="email" name="email" placeholder="Email to get updates" required />
-      <button type="submit">Notify me</button>
+      <input type="email" name="email" />
     </form>
-  </div>
 
-  <!-- chessboard.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
-  <script>
-    const board = Chessboard('board', {
-      position: 'start',
-      draggable: false
-    });
-    window.addEventListener('resize', () => board.resize());
-  </script>
-</body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
