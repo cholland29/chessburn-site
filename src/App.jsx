@@ -25,20 +25,26 @@ const TEST_FENS = [
 ];
 
 export default function App() {
-  // Base position (updates on reset/load)
+  // Base position (updates on reset/FEN/PGN load)
   const [baseFen, setBaseFen] = useState(() => new Chess().fen());
 
-  const [game, setGame] = useState(() => new Chess()); // current displayed position
+  // Current displayed position
+  const [game, setGame] = useState(() => new Chess());
+  const [lastMove, setLastMove] = useState(null);   // {from,to}
+
+  // Move history since baseFen
+  const [moves, setMoves] = useState([]);           // SAN array
+  const [currentPly, setCurrentPly] = useState(0);  // 0..moves.length
+
+  // UI state
+  const [boardOrientation, setBoardOrientation] = useState("white");
   const [fenText, setFenText] = useState(() => game.fen());
   const [fenError, setFenError] = useState("");
   const [lastLoadedName, setLastLoadedName] = useState("");
+  const [pgnText, setPgnText] = useState("");
+  const [pgnError, setPgnError] = useState("");
 
-  const [moves, setMoves] = useState([]);           // SAN array since baseFen
-  const [currentPly, setCurrentPly] = useState(0);  // index into moves (0..moves.length)
-  const [lastMove, setLastMove] = useState(null);   // {from,to}
-
-  const [boardOrientation, setBoardOrientation] = useState("white");
-
+  // Layout refs
   const rowRef = useRef(null);
   const [boardWidth, setBoardWidth] = useState(360);
   const [stack, setStack] = useState(false);        // stack on small screens
@@ -47,7 +53,44 @@ export default function App() {
   const scrollRef = useRef(null);
   const activeMoveRef = useRef(null);
 
-  // FEN from URL (?fen=...)
+  // --- Utilities ---
+  function validateFen(fen) {
+    if (Chess.validate_fen) return Chess.validate_fen(fen);
+    try { new Chess(fen); return { valid: true }; }
+    catch (e) { return { valid: false, error: e?.message || "Invalid FEN" }; }
+  }
+
+  function loadPGNIntoChess(ch, pgn) {
+    // normalize newlines; support both API spellings
+    const text = (pgn || "").replace(/\r\n?/g, "\n").trim();
+    if (!text) return false;
+    if (typeof ch.loadPgn === "function") {
+      return ch.loadPgn(text, { sloppy: true, newlineChar: "\n" });
+    }
+    if (typeof ch.load_pgn === "function") {
+      return ch.load_pgn(text, { sloppy: true, newline_char: "\n" });
+    }
+    return false;
+  }
+
+  function positionAtPly(ply) {
+    const ch = new Chess(baseFen);
+    for (let i = 0; i < Math.min(ply, moves.length); i++) ch.move(moves[i]);
+    const hist = ch.history({ verbose: true });
+    const lm = hist.length ? { from: hist[hist.length - 1].from, to: hist[hist.length - 1].to } : null;
+    return { ch, lm };
+  }
+
+  function jumpToPly(ply) {
+    const { ch, lm } = positionAtPly(ply);
+    setGame(ch);
+    setFenText(ch.fen());
+    setCurrentPly(ply);
+    setLastMove(lm);
+  }
+
+  // --- Lifecycle / sizing ---
+  // Load FEN from URL (?fen=...)
   useEffect(() => {
     try {
       const qfen = new URLSearchParams(window.location.search).get("fen");
@@ -98,29 +141,33 @@ export default function App() {
     el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }, [currentPly, moves.length, stack, boardWidth]);
 
-  // Helpers
-  function validateFen(fen) {
-    if (Chess.validate_fen) return Chess.validate_fen(fen);
-    try { new Chess(fen); return { valid: true }; }
-    catch (e) { return { valid: false, error: e?.message || "Invalid FEN" }; }
-  }
+  // --- Keyboard shortcuts ---
+  // ← : back    → : forward    Home : start    End : latest    F : flip board
+  useEffect(() => {
+    function stepBack()    { if (currentPly > 0)            jumpToPly(currentPly - 1); }
+    function stepForward() { if (currentPly < moves.length) jumpToPly(currentPly + 1); }
+    function goLatest()    { if (currentPly < moves.length) jumpToPly(moves.length); }
+    function goStart()     { if (currentPly !== 0)          jumpToPly(0); }
 
-  function positionAtPly(ply) {
-    const ch = new Chess(baseFen);
-    for (let i = 0; i < Math.min(ply, moves.length); i++) ch.move(moves[i]);
-    const hist = ch.history({ verbose: true });
-    const lm = hist.length ? { from: hist[hist.length - 1].from, to: hist[hist.length - 1].to } : null;
-    return { ch, lm };
-  }
+    function onKey(e) {
+      const t = document.activeElement;
+      const tag = t && t.tagName ? t.tagName.toLowerCase() : "";
+      const typing = (t && (t.isContentEditable || tag === "input" || tag === "textarea"));
+      if (typing) return;
 
-  function jumpToPly(ply) {
-    const { ch, lm } = positionAtPly(ply);
-    setGame(ch);
-    setFenText(ch.fen());
-    setCurrentPly(ply);
-    setLastMove(lm);
-  }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); stepBack(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
+      else if (e.key === "Home")  { e.preventDefault(); goStart(); }
+      else if (e.key === "End")   { e.preventDefault(); goLatest(); }
+      else if (e.key === "f" || e.key === "F") {
+        setBoardOrientation(o => (o === "white" ? "black" : "white"));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentPly, moves.length]);
 
+  // --- Board interactions ---
   function onPieceDrop(from, to) {
     try {
       // start from the *current* displayed position
@@ -138,12 +185,14 @@ export default function App() {
       setFenText(next.fen());
       setFenError("");
       setLastMove({ from, to });
+      setPgnError("");
       return true;
     } catch {
       return false;
     }
   }
 
+  // --- Commands ---
   function reset() {
     const start = new Chess();
     const fen = start.fen();
@@ -155,6 +204,7 @@ export default function App() {
     setCurrentPly(0);
     setLastMove(null);
     setLastLoadedName("");
+    setPgnError("");
   }
 
   function undo() {
@@ -182,6 +232,7 @@ export default function App() {
     setCurrentPly(0);
     setLastMove(null);
     setLastLoadedName("Custom FEN");
+    setPgnError("");
   }
 
   function loadRandomFen() {
@@ -197,9 +248,87 @@ export default function App() {
       setCurrentPly(0);
       setLastMove(null);
       setLastLoadedName(pick.name);
+      setPgnError("");
     } catch (e) {
       setFenError(e?.message || "Invalid FEN.");
     }
+  }
+
+  // ---- PGN helpers: sanitize & tokenize ----
+function stripParenBlocks(s) {
+  // remove nested (...) variations by repeated passes
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\([^()]*\)/g, " ");
+  } while (s !== prev);
+  return s;
+}
+
+function sanitizeAndTokenizePgn(pgn) {
+  let s = String(pgn || "").replace(/\r\n?/g, "\n");
+
+  // detect starting FEN from headers (only if [SetUp "1"] is present)
+  const fenTag = s.match(/\[FEN\s+"([^"]+)"\]/i);
+  const setupTag = s.match(/\[SetUp\s+"1"\]/i);
+  const startFen = fenTag && setupTag ? fenTag[1] : null;
+
+  // remove headers, comments, variations, NAGs, move numbers, results
+  s = s.replace(/^\s*\[.*?\]\s*$/gm, " ");          // headers like [Event "..."]
+  s = s.replace(/\{[^}]*\}/g, " ");                 // { comments }
+  s = s.replace(/;[^\n]*/g, " ");                   // ; line comments
+  s = stripParenBlocks(s);                           // ( ... ) variations
+  s = s.replace(/\$\d+/g, " ");                      // $ NAGs
+  s = s.replace(/\d+\.(\.\.)?/g, " ");               // move numbers "12." or "12..."
+  s = s.replace(/\b(1-0|0-1|1\/2-1\/2|\*)\b/g, " "); // results
+  s = s.replace(/[^\S\r\n]+/g, " ").trim();          // collapse spaces
+
+  const raw = s.split(/\s+/).filter(Boolean);
+  // strip annotation punctuation like !! ?! ?? at the end (keep + / #)
+  const tokens = raw.map((t) => t.replace(/[!?]+$/g, ""));
+  return { tokens, startFen };
+}
+
+// ---- Import PGN (robust) ----
+function importPgn(text) {
+  setPgnError("");
+  const { tokens, startFen } = sanitizeAndTokenizePgn(text);
+
+  // base position: FEN from headers if present, else the standard start
+  const base = startFen || new Chess().fen();
+  const ch = new Chess(base);
+  const applied = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    const mv = ch.move(tok); // SAN move
+    if (!mv) {
+      setPgnError(`Couldn't parse at token ${i + 1}: "${tok}"`);
+      return;
+    }
+    applied.push(mv.san); // chess.js may normalize SAN
+  }
+
+  const endFen = ch.fen();
+  const verbose = ch.history({ verbose: true });
+  setBaseFen(base);
+  setMoves(applied);
+  setCurrentPly(applied.length);
+  setGame(new Chess(endFen));
+  setFenText(endFen);
+  setLastMove(
+    verbose.length ? { from: verbose[verbose.length - 1].from, to: verbose[verbose.length - 1].to } : null
+  );
+  setLastLoadedName("PGN import");
+}
+
+
+  function importPgnFromFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => importPgn(String(reader.result || ""));
+    reader.onerror = () => setPgnError("Failed to read file.");
+    reader.readAsText(file);
   }
 
   async function copyCurrentFen() {
@@ -235,35 +364,10 @@ export default function App() {
   // Step controls
   const canBack = currentPly > 0;
   const canForward = currentPly < moves.length;
-
-  // --- Step helpers (reuse jumpToPly) ---
-  function stepBack()    { if (currentPly > 0)               jumpToPly(currentPly - 1); }
-  function stepForward() { if (currentPly < moves.length)    jumpToPly(currentPly + 1); }
-  function goLatest()    { if (currentPly < moves.length)    jumpToPly(moves.length); }
-  function goStart()     { if (currentPly !== 0)             jumpToPly(0); }
-
-  // --- Keyboard shortcuts ---
-  // ← : back    → : forward    Home : start    End : latest    F : flip board
-  useEffect(() => {
-    function onKey(e) {
-      const t = document.activeElement;
-      const tag = t && t.tagName ? t.tagName.toLowerCase() : "";
-      const typing = (t && (t.isContentEditable || tag === "input" || tag === "textarea"));
-      if (typing) return; // don't hijack while typing
-
-      if (e.key === "ArrowLeft")  { e.preventDefault(); stepBack(); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
-      else if (e.key === "Home")  { e.preventDefault(); goStart(); }
-      else if (e.key === "End")   { e.preventDefault(); goLatest(); }
-      else if (e.key === "f" || e.key === "F") {
-        // flip board (no preventDefault so browser Find still works with Cmd/Ctrl+F)
-        setBoardOrientation(o => (o === "white" ? "black" : "white"));
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [currentPly, moves.length]);
-
+  const stepBack = () => canBack && jumpToPly(currentPly - 1);
+  const stepForward = () => canForward && jumpToPly(currentPly + 1);
+  const goLatest = () => canForward && jumpToPly(moves.length);
+  const goStart = () => currentPly !== 0 && jumpToPly(0);
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
@@ -332,6 +436,7 @@ export default function App() {
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                 <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
                 <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
+                <button onClick={goStart}     disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Go to start (Home)">⏮</button>
                 <button onClick={goLatest}    disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Go to latest (End)">⏭</button>
               </div>
 
@@ -393,11 +498,10 @@ export default function App() {
         </div>
       </DndProvider>
 
-      {/* FEN Loader */}
+      {/* FEN + PGN Loaders */}
       <div style={{ marginTop: 16 }}>
-        <label htmlFor="fen" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
-          FEN Loader
-        </label>
+        {/* FEN */}
+        <label htmlFor="fen" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>FEN Loader</label>
         <input
           id="fen"
           type="text"
@@ -411,41 +515,45 @@ export default function App() {
           }}
           placeholder="Paste a 6-field FEN and press Enter or Load"
           style={{
-            width: "100%",
-            padding: "10px",
-            fontFamily: "monospace",
-            borderRadius: 6,
-            border: fenError ? "2px solid #7f1d1d" : "1px solid #333",
-            background: "#111",
-            color: "#eee",
+            width: "100%", padding: "10px", fontFamily: "monospace", borderRadius: 6,
+            border: fenError ? "2px solid #7f1d1d" : "1px solid #333", background: "#111", color: "#eee",
           }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           <button onClick={loadFen}>Load FEN</button>
-          <button
-            onClick={() => {
-              const start = new Chess();
-              const fen = start.fen();
-              setBaseFen(fen);
-              setGame(start);
-              setFenText(fen);
-              setFenError("");
-              setMoves([]);
-              setCurrentPly(0);
-              setLastMove(null);
-              setLastLoadedName("Start");
-            }}
-          >
-            Start FEN
-          </button>
           <button onClick={loadRandomFen}>Random test FEN</button>
         </div>
-        {lastLoadedName && (
-          <div style={{ marginTop: 6, color: "#bbb" }}>
-            Loaded: <strong>{lastLoadedName}</strong>
-          </div>
-        )}
+        {lastLoadedName && <div style={{ marginTop: 6, color: "#bbb" }}>Loaded: <strong>{lastLoadedName}</strong></div>}
         {fenError && <div style={{ color: "#fca5a5", marginTop: 6 }}>{fenError}</div>}
+
+        {/* PGN */}
+        <hr style={{ borderColor: "#333", margin: "16px 0" }} />
+        <label htmlFor="pgn" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>PGN Import</label>
+        <textarea
+          id="pgn"
+          value={pgnText}
+          onChange={(e) => setPgnText(e.target.value)}
+          placeholder='Paste a PGN here (comments/variations ok). Example: [Event "Casual"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6'
+          rows={6}
+          style={{
+            width: "100%", padding: "10px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            borderRadius: 6, border: pgnError ? "2px solid #7f1d1d" : "1px solid #333", background: "#111", color: "#eee",
+            whiteSpace: "pre-wrap",
+          }}
+        />
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => importPgn(pgnText)}>Load PGN</button>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="file"
+              accept=".pgn,text/plain"
+              style={{ display: "none" }}
+              onChange={(e) => importPgnFromFile(e.target.files?.[0] || null)}
+            />
+            <span style={{ border: "1px solid #333", padding: "6px 10px", borderRadius: 6 }}>Choose .pgn file…</span>
+          </label>
+        </div>
+        {pgnError && <div style={{ color: "#fca5a5", marginTop: 6 }}>{pgnError}</div>}
       </div>
     </div>
   );
