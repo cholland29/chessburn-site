@@ -405,6 +405,7 @@ function importPgn(text) {
               boardWidth={boardWidth}
               boardOrientation={boardOrientation}
               customSquareStyles={customSquareStyles}
+              animationDuration={160}   // ← speed up (default is 300ms)
             />
           </div>
 
