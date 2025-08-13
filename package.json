@@ -12,8 +12,7 @@
   "dependencies": {
     "chess.js": "^1.4.0",
     "react": "^19.1.1",
-    "react-chessboard": "^4.7.3",
-    "react-dnd-html5-backend": "^16.0.1",
+    "react-chessboard": "^5.2.2",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {

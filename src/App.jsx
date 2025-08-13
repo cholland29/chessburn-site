@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, Fragment } from "react";
 import * as ChessJS from "chess.js";
 import { Chessboard } from "react-chessboard";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
 
 const Chess = ChessJS.Chess || ChessJS.default;
 
@@ -53,24 +51,11 @@ export default function App() {
   const scrollRef = useRef(null);
   const activeMoveRef = useRef(null);
 
-  // --- Utilities ---
+  // ==== Utilities ====
   function validateFen(fen) {
     if (Chess.validate_fen) return Chess.validate_fen(fen);
     try { new Chess(fen); return { valid: true }; }
     catch (e) { return { valid: false, error: e?.message || "Invalid FEN" }; }
-  }
-
-  function loadPGNIntoChess(ch, pgn) {
-    // normalize newlines; support both API spellings
-    const text = (pgn || "").replace(/\r\n?/g, "\n").trim();
-    if (!text) return false;
-    if (typeof ch.loadPgn === "function") {
-      return ch.loadPgn(text, { sloppy: true, newlineChar: "\n" });
-    }
-    if (typeof ch.load_pgn === "function") {
-      return ch.load_pgn(text, { sloppy: true, newline_char: "\n" });
-    }
-    return false;
   }
 
   function positionAtPly(ply) {
@@ -89,7 +74,37 @@ export default function App() {
     setLastMove(lm);
   }
 
-  // --- Lifecycle / sizing ---
+  // ---- PGN helpers: sanitize & tokenize (robust importer) ----
+  function stripParenBlocks(s) {
+    // remove nested (...) variations by repeated passes
+    let prev;
+    do { prev = s; s = s.replace(/\([^()]*\)/g, " "); } while (s !== prev);
+    return s;
+  }
+  function sanitizeAndTokenizePgn(pgn) {
+    let s = String(pgn || "").replace(/\r\n?/g, "\n");
+    // detect starting FEN from headers only if [SetUp "1"] exists
+    const fenTag = s.match(/\[FEN\s+"([^"]+)"\]/i);
+    const setupTag = s.match(/\[SetUp\s+"1"\]/i);
+    const startFen = fenTag && setupTag ? fenTag[1] : null;
+
+    // remove headers, comments, variations, NAGs, move numbers, results
+    s = s.replace(/^\s*\[.*?\]\s*$/gm, " ");
+    s = s.replace(/\{[^}]*\}/g, " ");
+    s = s.replace(/;[^\n]*/g, " ");
+    s = stripParenBlocks(s);
+    s = s.replace(/\$\d+/g, " ");
+    s = s.replace(/\d+\.(\.\.)?/g, " ");
+    s = s.replace(/\b(1-0|0-1|1\/2-1\/2|\*)\b/g, " ");
+    s = s.replace(/[^\S\r\n]+/g, " ").trim();
+
+    const raw = s.split(/\s+/).filter(Boolean);
+    // strip !! ?! ?? etc (keep + and #)
+    const tokens = raw.map((t) => t.replace(/[!?]+$/g, ""));
+    return { tokens, startFen };
+  }
+
+  // ==== Lifecycle / sizing ====
   // Load FEN from URL (?fen=...)
   useEffect(() => {
     try {
@@ -141,13 +156,13 @@ export default function App() {
     el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }, [currentPly, moves.length, stack, boardWidth]);
 
-  // --- Keyboard shortcuts ---
+  // ==== Keyboard shortcuts ====
   // ← : back    → : forward    Home : start    End : latest    F : flip board
   useEffect(() => {
-    function stepBack()    { if (currentPly > 0)            jumpToPly(currentPly - 1); }
-    function stepForward() { if (currentPly < moves.length) jumpToPly(currentPly + 1); }
-    function goLatest()    { if (currentPly < moves.length) jumpToPly(moves.length); }
-    function goStart()     { if (currentPly !== 0)          jumpToPly(0); }
+    const stepBack    = () => { if (currentPly > 0)               jumpToPly(currentPly - 1); };
+    const stepForward = () => { if (currentPly < moves.length)    jumpToPly(currentPly + 1); };
+    const goLatest    = () => { if (currentPly < moves.length)    jumpToPly(moves.length); };
+    const goStart     = () => { if (currentPly !== 0)             jumpToPly(0); };
 
     function onKey(e) {
       const t = document.activeElement;
@@ -155,10 +170,10 @@ export default function App() {
       const typing = (t && (t.isContentEditable || tag === "input" || tag === "textarea"));
       if (typing) return;
 
-      if (e.key === "ArrowLeft")  { e.preventDefault(); stepBack(); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
-      else if (e.key === "Home")  { e.preventDefault(); goStart(); }
-      else if (e.key === "End")   { e.preventDefault(); goLatest(); }
+      if (e.key === "ArrowLeft")      { e.preventDefault(); stepBack(); }
+      else if (e.key === "ArrowRight"){ e.preventDefault(); stepForward(); }
+      else if (e.key === "Home")      { e.preventDefault(); goStart(); }
+      else if (e.key === "End")       { e.preventDefault(); goLatest(); }
       else if (e.key === "f" || e.key === "F") {
         setBoardOrientation(o => (o === "white" ? "black" : "white"));
       }
@@ -167,7 +182,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [currentPly, moves.length]);
 
-  // --- Board interactions ---
+  // ==== Board interactions ====
   function onPieceDrop(from, to) {
     try {
       // start from the *current* displayed position
@@ -184,15 +199,15 @@ export default function App() {
       setGame(next);
       setFenText(next.fen());
       setFenError("");
-      setLastMove({ from, to });
       setPgnError("");
+      setLastMove({ from, to });
       return true;
     } catch {
       return false;
     }
   }
 
-  // --- Commands ---
+  // ==== Commands ====
   function reset() {
     const start = new Chess();
     const fen = start.fen();
@@ -254,74 +269,36 @@ export default function App() {
     }
   }
 
-  // ---- PGN helpers: sanitize & tokenize ----
-function stripParenBlocks(s) {
-  // remove nested (...) variations by repeated passes
-  let prev;
-  do {
-    prev = s;
-    s = s.replace(/\([^()]*\)/g, " ");
-  } while (s !== prev);
-  return s;
-}
+  // ==== PGN Import (robust) ====
+  function importPgn(text) {
+    setPgnError("");
+    const { tokens, startFen } = sanitizeAndTokenizePgn(text);
 
-function sanitizeAndTokenizePgn(pgn) {
-  let s = String(pgn || "").replace(/\r\n?/g, "\n");
+    // base position: FEN from headers if present, else the standard start
+    const base = startFen || new Chess().fen();
+    const ch = new Chess(base);
+    const applied = [];
 
-  // detect starting FEN from headers (only if [SetUp "1"] is present)
-  const fenTag = s.match(/\[FEN\s+"([^"]+)"\]/i);
-  const setupTag = s.match(/\[SetUp\s+"1"\]/i);
-  const startFen = fenTag && setupTag ? fenTag[1] : null;
-
-  // remove headers, comments, variations, NAGs, move numbers, results
-  s = s.replace(/^\s*\[.*?\]\s*$/gm, " ");          // headers like [Event "..."]
-  s = s.replace(/\{[^}]*\}/g, " ");                 // { comments }
-  s = s.replace(/;[^\n]*/g, " ");                   // ; line comments
-  s = stripParenBlocks(s);                           // ( ... ) variations
-  s = s.replace(/\$\d+/g, " ");                      // $ NAGs
-  s = s.replace(/\d+\.(\.\.)?/g, " ");               // move numbers "12." or "12..."
-  s = s.replace(/\b(1-0|0-1|1\/2-1\/2|\*)\b/g, " "); // results
-  s = s.replace(/[^\S\r\n]+/g, " ").trim();          // collapse spaces
-
-  const raw = s.split(/\s+/).filter(Boolean);
-  // strip annotation punctuation like !! ?! ?? at the end (keep + / #)
-  const tokens = raw.map((t) => t.replace(/[!?]+$/g, ""));
-  return { tokens, startFen };
-}
-
-// ---- Import PGN (robust) ----
-function importPgn(text) {
-  setPgnError("");
-  const { tokens, startFen } = sanitizeAndTokenizePgn(text);
-
-  // base position: FEN from headers if present, else the standard start
-  const base = startFen || new Chess().fen();
-  const ch = new Chess(base);
-  const applied = [];
-
-  for (let i = 0; i < tokens.length; i++) {
-    const tok = tokens[i];
-    const mv = ch.move(tok); // SAN move
-    if (!mv) {
-      setPgnError(`Couldn't parse at token ${i + 1}: "${tok}"`);
-      return;
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      const mv = ch.move(tok); // SAN move
+      if (!mv) {
+        setPgnError(`Couldn't parse at token ${i + 1}: "${tok}"`);
+        return;
+      }
+      applied.push(mv.san);
     }
-    applied.push(mv.san); // chess.js may normalize SAN
+
+    const endFen = ch.fen();
+    const verbose = ch.history({ verbose: true });
+    setBaseFen(base);
+    setMoves(applied);
+    setCurrentPly(applied.length);
+    setGame(new Chess(endFen));
+    setFenText(endFen);
+    setLastMove(verbose.length ? { from: verbose[verbose.length - 1].from, to: verbose[verbose.length - 1].to } : null);
+    setLastLoadedName("PGN import");
   }
-
-  const endFen = ch.fen();
-  const verbose = ch.history({ verbose: true });
-  setBaseFen(base);
-  setMoves(applied);
-  setCurrentPly(applied.length);
-  setGame(new Chess(endFen));
-  setFenText(endFen);
-  setLastMove(
-    verbose.length ? { from: verbose[verbose.length - 1].from, to: verbose[verbose.length - 1].to } : null
-  );
-  setLastLoadedName("PGN import");
-}
-
 
   function importPgnFromFile(file) {
     if (!file) return;
@@ -342,7 +319,7 @@ function importPgn(text) {
     } catch {}
   }
 
-  // Last-move highlight
+  // Last-move highlight (per-square styles)
   const customSquareStyles = lastMove
     ? {
         [lastMove.from]: { background: "radial-gradient(circle, rgba(255,215,0,.45) 36%, transparent 40%)" },
@@ -361,7 +338,7 @@ function importPgn(text) {
     try { return parseInt(baseFen.split(" ")[5] || "1", 10) || 1; } catch { return 1; }
   })();
 
-  // Step controls
+  // Step controls availability
   const canBack = currentPly > 0;
   const canForward = currentPly < moves.length;
   const stepBack = () => canBack && jumpToPly(currentPly - 1);
@@ -386,137 +363,140 @@ function importPgn(text) {
         <button onClick={copyShareLink}>Copy share link</button>
       </div>
 
-      <DndProvider backend={HTML5Backend}>
-        <div
-          ref={rowRef}
+      <div
+        ref={rowRef}
+        style={{
+          display: "flex",
+          flexDirection: stack ? "column" : "row",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          gap: GAP,
+        }}
+      >
+        {/* Board */}
+        <div style={{ flex: "0 0 auto", width: boardWidth }}>
+          <Chessboard
+            /* core */
+            position={game.fen()}
+            boardWidth={boardWidth}  // stays top-level in v5
+
+            /* v5 options */
+            options={{
+              boardOrientation,            // "white" | "black"
+              animationDurationInMs: 140,  // tweak to taste
+              customSquareStyles,          // last-move highlight
+              onPieceDrop: (from, to) => onPieceDrop(from, to), // v5 handlers live in options
+            }}
+          />
+        </div>
+
+        {/* Right-side panel: header (static) + scrollable move list */}
+        <aside
           style={{
+            width: stack ? "100%" : SIDE_W,
+            height: stack ? 200 : boardWidth,
+            flex: "0 0 auto",
             display: "flex",
-            flexDirection: stack ? "column" : "row",
-            alignItems: "flex-start",
-            justifyContent: "center",
-            gap: GAP,
+            alignItems: "stretch",
           }}
         >
-          {/* Board */}
-          <div style={{ flex: "0 0 auto" }}>
-            <Chessboard
-              position={game.fen()}
-              onPieceDrop={onPieceDrop}
-              boardWidth={boardWidth}
-              boardOrientation={boardOrientation}
-              customSquareStyles={customSquareStyles}
-              animationDuration={160}   // ← speed up (default is 300ms)
-            />
-          </div>
-
-          {/* Right-side panel: header (static) + move list (scrolls) */}
-          <aside
+          <div
             style={{
-              width: stack ? "100%" : SIDE_W,
-              height: stack ? 200 : boardWidth,
-              flex: "0 0 auto",
+              border: "1px solid #2a2a2a",
+              borderRadius: 8,
+              background: "#111",
+              color: "#eee",
+              height: "100%",
+              width: "100%",
+              padding: 8,
               display: "flex",
-              alignItems: "stretch",
+              flexDirection: "column",   // header fixed, list scrolls
             }}
           >
+            {/* Step controls (never scroll) */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
+              <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
+              <button onClick={goStart}     disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Go to start (Home)">⏮</button>
+              <button onClick={goLatest}    disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Go to latest (End)">⏭</button>
+            </div>
+
+            <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
+
+            {/* Scrollable move list only (custom number column to avoid clipping) */}
             <div
+              ref={scrollRef}
               style={{
-                border: "1px solid #2a2a2a",
-                borderRadius: 8,
-                background: "#111",
-                color: "#eee",
-                height: "100%",
-                width: "100%",
-                padding: 8,
-                display: "flex",
-                flexDirection: "column",   // ← header stays, list fills below
+                flex: "1 1 auto",
+                overflowY: "auto",
+                overflowX: "hidden",
+                minHeight: 0,
               }}
             >
-              {/* Step controls (static header, never scrolls) */}
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
-                <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
-                <button onClick={goStart}     disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Go to start (Home)">⏮</button>
-                <button onClick={goLatest}    disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Go to latest (End)">⏭</button>
-              </div>
+              {pairs.length === 0 ? (
+                <div style={{ color: "#999" }}>No moves yet.</div>
+              ) : (
+                <div
+                  role="list"
+                  aria-label="Moves"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "4ch 1fr 1fr", // number | white | black
+                    columnGap: 12,
+                    rowGap: 4,
+                    alignItems: "center",
+                  }}
+                >
+                  {pairs.map((pair, idx) => {
+                    const moveNo = baseFullmove + idx;
+                    const whitePly = idx * 2;
+                    const blackPly = whitePly + 1;
+                    const isWhiteActive = currentPly - 1 === whitePly;
+                    const isBlackActive = currentPly - 1 === blackPly;
 
-              <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
+                    return (
+                      <Fragment key={idx}>
+                        {/* Number column (right-aligned with a dot) */}
+                        <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
 
-              {/* Scrollable move list only (custom number column to avoid clipping) */}
-              <div
-                ref={scrollRef}
-                style={{
-                  flex: "1 1 auto",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  minHeight: 0,
-                }}
-              >
-                {pairs.length === 0 ? (
-                  <div style={{ color: "#999" }}>No moves yet.</div>
-                ) : (
-                  <div
-                    role="list"
-                    aria-label="Moves"
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "4ch 1fr 1fr", // number | white | black
-                      columnGap: 12,
-                      rowGap: 4,
-                      alignItems: "center",
-                    }}
-                  >
-                    {pairs.map((pair, idx) => {
-                      const moveNo = baseFullmove + idx;
-                      const whitePly = idx * 2;
-                      const blackPly = whitePly + 1;
-                      const isWhiteActive = currentPly - 1 === whitePly;
-                      const isBlackActive = currentPly - 1 === blackPly;
+                        {/* White move */}
+                        <span
+                          ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
+                          onClick={() => pair[0] && jumpToPly(whitePly + 1)}
+                          title={pair[0] ? `Jump to ${pair[0]}` : ""}
+                          style={{
+                            cursor: pair[0] ? "pointer" : "default",
+                            background: isWhiteActive ? "#333" : "transparent",
+                            borderRadius: 6,
+                            padding: isWhiteActive ? "0 4px" : 0,
+                          }}
+                        >
+                          {pair[0] || ""}
+                        </span>
 
-                      return (
-                        <Fragment key={idx}>
-                          {/* Number column (right-aligned with a dot) */}
-                          <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
-
-                          {/* White move */}
-                          <span
-                            ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
-                            onClick={() => pair[0] && jumpToPly(whitePly + 1)}
-                            title={pair[0] ? `Jump to ${pair[0]}` : ""}
-                            style={{
-                              cursor: pair[0] ? "pointer" : "default",
-                              background: isWhiteActive ? "#333" : "transparent",
-                              borderRadius: 6,
-                              padding: isWhiteActive ? "0 4px" : 0,
-                            }}
-                          >
-                            {pair[0] || ""}
-                          </span>
-
-                          {/* Black move */}
-                          <span
-                            ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
-                            onClick={() => pair[1] && jumpToPly(blackPly + 1)}
-                            title={pair[1] ? `Jump to ${pair[1]}` : ""}
-                            style={{
-                              cursor: pair[1] ? "pointer" : "default",
-                              background: isBlackActive ? "#333" : "transparent",
-                              borderRadius: 6,
-                              padding: isBlackActive ? "0 4px" : 0,
-                            }}
-                          >
-                            {pair[1] || ""}
-                          </span>
-                        </Fragment>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                        {/* Black move */}
+                        <span
+                          ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
+                          onClick={() => pair[1] && jumpToPly(blackPly + 1)}
+                          title={pair[1] ? `Jump to ${pair[1]}` : ""}
+                          style={{
+                            cursor: pair[1] ? "pointer" : "default",
+                            background: isBlackActive ? "#333" : "transparent",
+                            borderRadius: 6,
+                            padding: isBlackActive ? "0 4px" : 0,
+                          }}
+                        >
+                          {pair[1] || ""}
+                        </span>
+                      </Fragment>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </aside>
-        </div>
-      </DndProvider>
+          </div>
+        </aside>
+      </div>
 
       {/* FEN + PGN Loaders */}
       <div style={{ marginTop: 16 }}>
@@ -553,12 +533,13 @@ function importPgn(text) {
           id="pgn"
           value={pgnText}
           onChange={(e) => setPgnText(e.target.value)}
-          placeholder='Paste a PGN here (comments/variations ok). Example: [Event "Casual"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6'
+          placeholder='Paste a PGN here. Example: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6'
           rows={6}
           style={{
-            width: "100%", padding: "10px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-            borderRadius: 6, border: pgnError ? "2px solid #7f1d1d" : "1px solid #333", background: "#111", color: "#eee",
-            whiteSpace: "pre-wrap",
+            width: "100%", padding: "10px",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            borderRadius: 6, border: pgnError ? "2px solid #7f1d1d" : "1px solid #333",
+            background: "#111", color: "#eee", whiteSpace: "pre-wrap",
           }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
