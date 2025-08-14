@@ -183,8 +183,9 @@ export default function App() {
   }, [currentPly, moves.length]);
 
   // ==== Board interactions ====
-  function onPieceDrop(from, to) {
+  function onPieceDrop(from, to, piece) {
     try {
+      if (!from || !to) return false;
       // start from the *current* displayed position
       const next = new Chess(game.fen());
       const moved = next.move({ from, to, promotion: "q" });
@@ -201,8 +202,8 @@ export default function App() {
       setFenError("");
       setPgnError("");
       setLastMove({ from, to });
-      return true;
-    } catch {
+      return true; // IMPORTANT for react-chessboard to accept the drop
+    } catch (e) {
       return false;
     }
   }
@@ -376,16 +377,19 @@ export default function App() {
         {/* Board */}
         <div style={{ flex: "0 0 auto", width: boardWidth }}>
           <Chessboard
-            /* core */
-            position={game.fen()}
-            boardWidth={boardWidth}  // stays top-level in v5
-
-            /* v5 options */
+            boardWidth={boardWidth}
             options={{
-              boardOrientation,            // "white" | "black"
-              animationDurationInMs: 140,  // tweak to taste
-              customSquareStyles,          // last-move highlight
-              onPieceDrop: (from, to) => onPieceDrop(from, to), // v5 handlers live in options
+              position: game.fen(),            // v5: drive board via options.position
+              boardOrientation,                // v5: orientation in options
+              animationDurationInMs: 140,
+              customSquareStyles,
+              onPieceDrop: (payload) => {
+                // v5 passes a single object; normalize to (from, to, piece)
+                const from = payload?.sourceSquare ?? payload?.from ?? payload?.source ?? payload?.startSquare;
+                const to   = payload?.targetSquare ?? payload?.to   ?? payload?.target ?? payload?.endSquare;
+                const piece = payload?.piece ?? payload?.pieceId ?? payload?.pieceType;
+                return onPieceDrop(from, to, piece);
+              }, // v5: handler receives an object
             }}
           />
         </div>
