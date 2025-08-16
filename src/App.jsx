@@ -23,6 +23,7 @@ const TEST_FENS = [
 ];
 
 export default function App() {
+  const [eventInfo, setEventInfo] = useState({ event: "", site: "", date: "" });
   // Base position (updates on reset/FEN/PGN load)
   const [baseFen, setBaseFen] = useState(() => new Chess().fen());
 
@@ -43,6 +44,10 @@ export default function App() {
   const [pgnError, setPgnError] = useState("");
   const [whiteName, setWhiteName] = useState("");
   const [blackName, setBlackName] = useState("");
+  const [whiteElo, setWhiteElo] = useState("");
+  const [blackElo, setBlackElo] = useState("");
+  const [whiteTitle, setWhiteTitle] = useState("");
+  const [blackTitle, setBlackTitle] = useState("");
 
   // Layout refs
   const rowRef = useRef(null);
@@ -274,12 +279,29 @@ export default function App() {
 
   // ==== PGN Import (robust) ====
   function importPgn(text) {
+    // Extract metadata
+    const eventMatch = text.match(/\[Event\s+"([^"]+)"\]/i);
+    const siteMatch = text.match(/\[Site\s+"([^"]+)"\]/i);
+    const dateMatch = text.match(/\[Date\s+"([^"]+)"\]/i);
+    setEventInfo({
+      event: eventMatch ? eventMatch[1] : "",
+      site: siteMatch ? siteMatch[1] : "",
+      date: dateMatch ? dateMatch[1] : ""
+    });
     setPgnError("");
-    // Extract player names from PGN headers
-    const whiteMatch = text.match(/\[White\s+"([^"]+)"\]/i);
-    const blackMatch = text.match(/\[Black\s+"([^"]+)"\]/i);
-    setWhiteName(whiteMatch ? whiteMatch[1] : "White");
-    setBlackName(blackMatch ? blackMatch[1] : "Black");
+  // Extract player info from PGN headers
+  const whiteMatch = text.match(/\[White\s+"([^"]+)"\]/i);
+  const blackMatch = text.match(/\[Black\s+"([^"]+)"\]/i);
+  const whiteEloMatch = text.match(/\[WhiteElo\s+"([^"]+)"\]/i);
+  const blackEloMatch = text.match(/\[BlackElo\s+"([^"]+)"\]/i);
+  const whiteTitleMatch = text.match(/\[WhiteTitle\s+"([^"]+)"\]/i);
+  const blackTitleMatch = text.match(/\[BlackTitle\s+"([^"]+)"\]/i);
+  setWhiteName(whiteMatch ? whiteMatch[1] : "White");
+  setBlackName(blackMatch ? blackMatch[1] : "Black");
+  setWhiteElo(whiteEloMatch && whiteEloMatch[1] !== "?" ? whiteEloMatch[1] : "");
+  setBlackElo(blackEloMatch && blackEloMatch[1] !== "?" ? blackEloMatch[1] : "");
+  setWhiteTitle(whiteTitleMatch ? whiteTitleMatch[1] : "");
+  setBlackTitle(blackTitleMatch ? blackTitleMatch[1] : "");
 
     const { tokens, startFen } = sanitizeAndTokenizePgn(text);
 
@@ -385,9 +407,17 @@ export default function App() {
       >
         {/* Board */}
         <div style={{ flex: "0 0 auto", width: boardWidth }}>
+          {/* Concise PGN metadata above board */}
+          {(eventInfo.event || eventInfo.site || eventInfo.date) && (
+            <div style={{ textAlign: "center", fontSize: 13, color: "#aaa", marginBottom: 2 }}>
+              {[eventInfo.event, eventInfo.site, eventInfo.date].filter(Boolean).join(" • ")}
+            </div>
+          )}
           {/* Player names above/below board depending on orientation */}
           <div style={{ textAlign: "center", fontWeight: "bold", marginBottom: 8, fontSize: 18 }}>
-            {boardOrientation === "white" ? blackName : whiteName}
+            {boardOrientation === "white"
+              ? `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`
+              : `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`}
           </div>
           <Chessboard
             boardWidth={boardWidth}
@@ -406,7 +436,9 @@ export default function App() {
             }}
           />
           <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
-            {boardOrientation === "white" ? whiteName : blackName}
+            {boardOrientation === "white"
+              ? `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`
+              : `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`}
           </div>
         </div>
 
