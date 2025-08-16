@@ -294,10 +294,11 @@ export default function App() {
     const verbose = ch.history({ verbose: true });
     setBaseFen(base);
     setMoves(applied);
-    setCurrentPly(applied.length);
-    setGame(new Chess(endFen));
-    setFenText(endFen);
-    setLastMove(verbose.length ? { from: verbose[verbose.length - 1].from, to: verbose[verbose.length - 1].to } : null);
+    setCurrentPly(0);
+    const { ch: startGame, lm: startMove } = positionAtPly(0);
+    setGame(startGame);
+    setFenText(startGame.fen());
+    setLastMove(startMove);
     setLastLoadedName("PGN import");
   }
 
