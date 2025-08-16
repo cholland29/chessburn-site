@@ -41,6 +41,8 @@ export default function App() {
   const [lastLoadedName, setLastLoadedName] = useState("");
   const [pgnText, setPgnText] = useState("");
   const [pgnError, setPgnError] = useState("");
+  const [whiteName, setWhiteName] = useState("");
+  const [blackName, setBlackName] = useState("");
 
   // Layout refs
   const rowRef = useRef(null);
@@ -273,6 +275,12 @@ export default function App() {
   // ==== PGN Import (robust) ====
   function importPgn(text) {
     setPgnError("");
+    // Extract player names from PGN headers
+    const whiteMatch = text.match(/\[White\s+"([^"]+)"\]/i);
+    const blackMatch = text.match(/\[Black\s+"([^"]+)"\]/i);
+    setWhiteName(whiteMatch ? whiteMatch[1] : "White");
+    setBlackName(blackMatch ? blackMatch[1] : "Black");
+
     const { tokens, startFen } = sanitizeAndTokenizePgn(text);
 
     // base position: FEN from headers if present, else the standard start
@@ -377,6 +385,10 @@ export default function App() {
       >
         {/* Board */}
         <div style={{ flex: "0 0 auto", width: boardWidth }}>
+          {/* Player names above/below board depending on orientation */}
+          <div style={{ textAlign: "center", fontWeight: "bold", marginBottom: 8, fontSize: 18 }}>
+            {boardOrientation === "white" ? blackName : whiteName}
+          </div>
           <Chessboard
             boardWidth={boardWidth}
             options={{
@@ -393,6 +405,9 @@ export default function App() {
               }, // v5: handler receives an object
             }}
           />
+          <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
+            {boardOrientation === "white" ? whiteName : blackName}
+          </div>
         </div>
 
         {/* Right-side panel: header (static) + scrollable move list */}
