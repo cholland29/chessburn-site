@@ -377,17 +377,29 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
-      <h1 style={{ textAlign: "center", marginBottom: 8 }}>Chessburn</h1>
-      <p style={{ textAlign: "center", color: "#bbb", marginTop: 0 }}>
-        Burn chess patterns into your brain.
-      </p>
-
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <button onClick={reset}>Reset</button>
-        <button onClick={() => setBoardOrientation(o => (o === "white" ? "black" : "white"))}>
-          Flip board
-        </button>
-        <button onClick={copyShareLink}>Copy share link</button>
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <h1 style={{ textAlign: "center", marginBottom: 8, width: "100%" }}>Chessburn</h1>
+        <p style={{ textAlign: "center", color: "#bbb", marginTop: 0, width: "100%" }}>
+          Burn chess patterns into your brain.
+        </p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: 12,
+            width: "100%",
+            flexDirection: window.innerWidth < 600 ? "column" : "row",
+            alignItems: "center"
+          }}
+        >
+          <button onClick={reset}>Reset</button>
+          <button onClick={() => setBoardOrientation(o => (o === "white" ? "black" : "white"))}>
+            Flip board
+          </button>
+          <button onClick={copyShareLink}>Copy share link</button>
+        </div>
       </div>
 
       <div
