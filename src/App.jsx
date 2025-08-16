@@ -391,6 +391,11 @@ export default function App() {
         <p style={{ textAlign: "center", color: "#bbb", marginTop: 0, width: "100%" }}>
           Burn chess patterns into your brain.
         </p>
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", marginBottom: 12, width: "100%" }}>
+          <button onClick={reset}>Reset</button>
+          <button onClick={() => setBoardOrientation(o => (o === "white" ? "black" : "white"))}>Flip board</button>
+          <button onClick={copyShareLink}>Copy share link</button>
+        </div>
       </div>
 
       <div
@@ -490,9 +495,58 @@ export default function App() {
                     <div
                       role="list"
                       aria-label="Moves"
-                      // ...existing code...
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "4ch 1fr 1fr", // number | white | black
+                        columnGap: 12,
+                        rowGap: 4,
+                        alignItems: "center",
+                      }}
                     >
-                      {/* ...existing code... */}
+                      {pairs.map((pair, idx) => {
+                        const moveNo = baseFullmove + idx;
+                        const whitePly = idx * 2;
+                        const blackPly = whitePly + 1;
+                        const isWhiteActive = currentPly - 1 === whitePly;
+                        const isBlackActive = currentPly - 1 === blackPly;
+
+                        return (
+                          <Fragment key={idx}>
+                            {/* Number column (right-aligned with a dot) */}
+                            <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
+
+                            {/* White move */}
+                            <span
+                              ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
+                              onClick={() => pair[0] && jumpToPly(whitePly + 1)}
+                              title={pair[0] ? `Jump to ${pair[0]}` : ""}
+                              style={{
+                                cursor: pair[0] ? "pointer" : "default",
+                                background: isWhiteActive ? "#333" : "transparent",
+                                borderRadius: 6,
+                                padding: isWhiteActive ? "0 4px" : 0,
+                              }}
+                            >
+                              {pair[0] || ""}
+                            </span>
+
+                            {/* Black move */}
+                            <span
+                              ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
+                              onClick={() => pair[1] && jumpToPly(blackPly + 1)}
+                              title={pair[1] ? `Jump to ${pair[1]}` : ""}
+                              style={{
+                                cursor: pair[1] ? "pointer" : "default",
+                                background: isBlackActive ? "#333" : "transparent",
+                                borderRadius: 6,
+                                padding: isBlackActive ? "0 4px" : 0,
+                              }}
+                            >
+                              {pair[1] || ""}
+                            </span>
+                          </Fragment>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
