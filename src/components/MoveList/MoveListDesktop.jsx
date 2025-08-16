@@ -1,3 +1,4 @@
+import React from "react";
 export default function MoveListDesktop({ pairs, currentPly, baseFullmove, jumpToPly, activeMoveRef }) {
   return (
     <div
@@ -18,7 +19,7 @@ export default function MoveListDesktop({ pairs, currentPly, baseFullmove, jumpT
         const isWhiteActive = currentPly - 1 === whitePly;
         const isBlackActive = currentPly - 1 === blackPly;
         return (
-          <>
+          <React.Fragment key={idx}>
             <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
             <span
               ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
@@ -46,7 +47,7 @@ export default function MoveListDesktop({ pairs, currentPly, baseFullmove, jumpT
             >
               {pair[1] || ""}
             </span>
-          </>
+          </React.Fragment>
         );
       })}
     </div>
