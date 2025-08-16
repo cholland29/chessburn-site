@@ -217,17 +217,24 @@ export default function App() {
 
   // ==== Commands ====
   function reset() {
-    const start = new Chess();
-    const fen = start.fen();
-    setBaseFen(fen);
-    setGame(start);
-    setFenText(fen);
-    setFenError("");
-    setMoves([]);
-    setCurrentPly(0);
-    setLastMove(null);
-    setLastLoadedName("");
-    setPgnError("");
+  const start = new Chess();
+  const fen = start.fen();
+  setBaseFen(fen);
+  setGame(start);
+  setFenText(fen);
+  setFenError("");
+  setMoves([]);
+  setCurrentPly(0);
+  setLastMove(null);
+  setLastLoadedName("");
+  setPgnError("");
+  setWhiteName("");
+  setBlackName("");
+  setWhiteElo("");
+  setBlackElo("");
+  setWhiteTitle("");
+  setBlackTitle("");
+  setEventInfo({ event: "", site: "", date: "" });
   }
 
   function undo() {
