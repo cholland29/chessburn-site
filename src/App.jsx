@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, Fragment } from "react";
+import MoveListDesktop from "./components/MoveList/MoveListDesktop.jsx";
+import MoveListMobile from "./components/MoveList/MoveListMobile.jsx";
 import * as ChessJS from "chess.js";
 import { Chessboard } from "react-chessboard";
 
@@ -387,7 +389,7 @@ export default function App() {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
       <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <h1 style={{ textAlign: "center", marginBottom: 8, width: "100%" }}>Chessburn Yo</h1>
+        <h1 style={{ textAlign: "center", marginBottom: 8, width: "100%" }}>Chessburn</h1>
         <p style={{ textAlign: "center", color: "#bbb", marginTop: 0, width: "100%" }}>
           Burn chess patterns into your brain.
         </p>
@@ -489,65 +491,22 @@ export default function App() {
                     minHeight: 0,
                   }}
                 >
-                  {pairs.length === 0 ? (
-                    <div style={{ color: "#999" }}>No moves yet.</div>
+                  {isMobileLayout ? (
+                    <MoveListMobile
+                      pairs={pairs}
+                      currentPly={currentPly}
+                      baseFullmove={baseFullmove}
+                      jumpToPly={jumpToPly}
+                      activeMoveRef={activeMoveRef}
+                    />
                   ) : (
-                    <div
-                      role="list"
-                      aria-label="Moves"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "4ch 1fr 1fr", // number | white | black
-                        columnGap: 12,
-                        rowGap: 4,
-                        alignItems: "center",
-                      }}
-                    >
-                      {pairs.map((pair, idx) => {
-                        const moveNo = baseFullmove + idx;
-                        const whitePly = idx * 2;
-                        const blackPly = whitePly + 1;
-                        const isWhiteActive = currentPly - 1 === whitePly;
-                        const isBlackActive = currentPly - 1 === blackPly;
-
-                        return (
-                          <Fragment key={idx}>
-                            {/* Number column (right-aligned with a dot) */}
-                            <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
-
-                            {/* White move */}
-                            <span
-                              ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
-                              onClick={() => pair[0] && jumpToPly(whitePly + 1)}
-                              title={pair[0] ? `Jump to ${pair[0]}` : ""}
-                              style={{
-                                cursor: pair[0] ? "pointer" : "default",
-                                background: isWhiteActive ? "#333" : "transparent",
-                                borderRadius: 6,
-                                padding: isWhiteActive ? "0 4px" : 0,
-                              }}
-                            >
-                              {pair[0] || ""}
-                            </span>
-
-                            {/* Black move */}
-                            <span
-                              ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
-                              onClick={() => pair[1] && jumpToPly(blackPly + 1)}
-                              title={pair[1] ? `Jump to ${pair[1]}` : ""}
-                              style={{
-                                cursor: pair[1] ? "pointer" : "default",
-                                background: isBlackActive ? "#333" : "transparent",
-                                borderRadius: 6,
-                                padding: isBlackActive ? "0 4px" : 0,
-                              }}
-                            >
-                              {pair[1] || ""}
-                            </span>
-                          </Fragment>
-                        );
-                      })}
-                    </div>
+                    <MoveListDesktop
+                      pairs={pairs}
+                      currentPly={currentPly}
+                      baseFullmove={baseFullmove}
+                      jumpToPly={jumpToPly}
+                      activeMoveRef={activeMoveRef}
+                    />
                   )}
                 </div>
               </div>
