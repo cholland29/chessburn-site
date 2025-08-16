@@ -237,16 +237,6 @@ export default function App() {
   setEventInfo({ event: "", site: "", date: "" });
   }
 
-  function undo() {
-    if (moves.length === 0) return;
-    const newMoves = moves.slice(0, -1);
-    setMoves(newMoves);
-    setCurrentPly(newMoves.length);
-    const { ch, lm } = positionAtPly(newMoves.length);
-    setGame(ch);
-    setFenText(ch.fen());
-    setLastMove(lm);
-  }
 
   function loadFen() {
     const raw = fenText.trim().replace(/\s+/g, " ");
@@ -394,11 +384,9 @@ export default function App() {
 
       <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         <button onClick={reset}>Reset</button>
-        <button onClick={undo}>Undo</button>
         <button onClick={() => setBoardOrientation(o => (o === "white" ? "black" : "white"))}>
           Flip board
         </button>
-        <button onClick={copyCurrentFen}>Copy FEN</button>
         <button onClick={copyShareLink}>Copy share link</button>
       </div>
 
@@ -580,6 +568,7 @@ export default function App() {
         />
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           <button onClick={loadFen}>Load FEN</button>
+          <button onClick={copyCurrentFen}>Copy FEN</button>
           <button onClick={loadRandomFen}>Random test FEN</button>
         </div>
         {lastLoadedName && <div style={{ marginTop: 6, color: "#bbb" }}>Loaded: <strong>{lastLoadedName}</strong></div>}
