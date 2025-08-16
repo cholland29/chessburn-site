@@ -23,6 +23,15 @@ const TEST_FENS = [
 ];
 
 export default function App() {
+  // Responsive layout: stack board and move list vertically on mobile
+  const [isMobileLayout, setIsMobileLayout] = useState(window.innerWidth < 600);
+  useEffect(() => {
+    function handleResize() {
+      setIsMobileLayout(window.innerWidth < 600);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const [eventInfo, setEventInfo] = useState({ event: "", site: "", date: "" });
   // Base position (updates on reset/FEN/PGN load)
   const [baseFen, setBaseFen] = useState(() => new Chess().fen());
@@ -378,183 +387,117 @@ export default function App() {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1rem" }}>
       <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <h1 style={{ textAlign: "center", marginBottom: 8, width: "100%" }}>Chessburn</h1>
+        <h1 style={{ textAlign: "center", marginBottom: 8, width: "100%" }}>Chessburn Yo</h1>
         <p style={{ textAlign: "center", color: "#bbb", marginTop: 0, width: "100%" }}>
           Burn chess patterns into your brain.
         </p>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: 8,
-            flexWrap: "wrap",
-            marginBottom: 12,
-            width: "100%",
-            flexDirection: window.innerWidth < 600 ? "column" : "row",
-            alignItems: "center"
-          }}
-        >
-          <button onClick={reset}>Reset</button>
-          <button onClick={() => setBoardOrientation(o => (o === "white" ? "black" : "white"))}>
-            Flip board
-          </button>
-          <button onClick={copyShareLink}>Copy share link</button>
-        </div>
       </div>
 
       <div
         ref={rowRef}
         style={{
           display: "flex",
-          flexDirection: stack ? "column" : "row",
+          flexDirection: isMobileLayout ? "column" : "row",
           alignItems: "flex-start",
           justifyContent: "center",
           gap: GAP,
         }}
       >
-        {/* Board */}
-        <div style={{ flex: "0 0 auto", width: boardWidth }}>
-          {/* Concise PGN metadata above board */}
-          {(eventInfo.event || eventInfo.site || eventInfo.date) && (
-            <div style={{ textAlign: "center", fontSize: 13, color: "#aaa", marginBottom: 2 }}>
-              {[eventInfo.event, eventInfo.site, eventInfo.date].filter(Boolean).join(" • ")}
-            </div>
-          )}
-          {/* Player names above/below board depending on orientation */}
-          <div style={{ textAlign: "center", fontWeight: "bold", marginBottom: 8, fontSize: 18 }}>
-            {boardOrientation === "white"
-              ? `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`
-              : `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`}
-          </div>
-          <Chessboard
-            boardWidth={boardWidth}
-            options={{
-              position: game.fen(),            // v5: drive board via options.position
-              boardOrientation,                // v5: orientation in options
-              animationDurationInMs: 140,
-              customSquareStyles,
-              onPieceDrop: (payload) => {
-                // v5 passes a single object; normalize to (from, to, piece)
-                const from = payload?.sourceSquare ?? payload?.from ?? payload?.source ?? payload?.startSquare;
-                const to   = payload?.targetSquare ?? payload?.to   ?? payload?.target ?? payload?.endSquare;
-                const piece = payload?.piece ?? payload?.pieceId ?? payload?.pieceType;
-                return onPieceDrop(from, to, piece);
-              }, // v5: handler receives an object
-            }}
-          />
-          <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
-            {boardOrientation === "white"
-              ? `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`
-              : `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`}
-          </div>
-        </div>
-
-        {/* Right-side panel: header (static) + scrollable move list */}
-        <aside
-          style={{
-            width: stack ? "100%" : SIDE_W,
-            height: stack ? 200 : boardWidth,
-            flex: "0 0 auto",
-            display: "flex",
-            alignItems: "stretch",
-          }}
-        >
-          <div
-            style={{
-              border: "1px solid #2a2a2a",
-              borderRadius: 8,
-              background: "#111",
-              color: "#eee",
-              height: "100%",
-              width: "100%",
-              padding: 8,
-              display: "flex",
-              flexDirection: "column",   // header fixed, list scrolls
-            }}
-          >
-            {/* Step controls (never scroll) */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-              <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
-              <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
-              <button onClick={goStart}     disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Go to start (Home)">⏮</button>
-              <button onClick={goLatest}    disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Go to latest (End)">⏭</button>
-            </div>
-
-            <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
-
-            {/* Scrollable move list only (custom number column to avoid clipping) */}
-            <div
-              ref={scrollRef}
-              style={{
-                flex: "1 1 auto",
-                overflowY: "auto",
-                overflowX: "hidden",
-                minHeight: 0,
-              }}
-            >
-              {pairs.length === 0 ? (
-                <div style={{ color: "#999" }}>No moves yet.</div>
-              ) : (
-                <div
-                  role="list"
-                  aria-label="Moves"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "4ch 1fr 1fr", // number | white | black
-                    columnGap: 12,
-                    rowGap: 4,
-                    alignItems: "center",
-                  }}
-                >
-                  {pairs.map((pair, idx) => {
-                    const moveNo = baseFullmove + idx;
-                    const whitePly = idx * 2;
-                    const blackPly = whitePly + 1;
-                    const isWhiteActive = currentPly - 1 === whitePly;
-                    const isBlackActive = currentPly - 1 === blackPly;
-
-                    return (
-                      <Fragment key={idx}>
-                        {/* Number column (right-aligned with a dot) */}
-                        <div style={{ textAlign: "right", color: "#aaa", paddingRight: 6 }}>{moveNo}.</div>
-
-                        {/* White move */}
-                        <span
-                          ref={(el) => { if (isWhiteActive) activeMoveRef.current = el; }}
-                          onClick={() => pair[0] && jumpToPly(whitePly + 1)}
-                          title={pair[0] ? `Jump to ${pair[0]}` : ""}
-                          style={{
-                            cursor: pair[0] ? "pointer" : "default",
-                            background: isWhiteActive ? "#333" : "transparent",
-                            borderRadius: 6,
-                            padding: isWhiteActive ? "0 4px" : 0,
-                          }}
-                        >
-                          {pair[0] || ""}
-                        </span>
-
-                        {/* Black move */}
-                        <span
-                          ref={(el) => { if (isBlackActive) activeMoveRef.current = el; }}
-                          onClick={() => pair[1] && jumpToPly(blackPly + 1)}
-                          title={pair[1] ? `Jump to ${pair[1]}` : ""}
-                          style={{
-                            cursor: pair[1] ? "pointer" : "default",
-                            background: isBlackActive ? "#333" : "transparent",
-                            borderRadius: 6,
-                            padding: isBlackActive ? "0 4px" : 0,
-                          }}
-                        >
-                          {pair[1] || ""}
-                        </span>
-                      </Fragment>
-                    );
-                  })}
+            {/* Board */}
+            <div style={{ flex: "0 0 auto", width: isMobileLayout ? "100%" : boardWidth }}>
+              {/* Concise PGN metadata above board */}
+              {(eventInfo.event || eventInfo.site || eventInfo.date) && (
+                <div style={{ textAlign: "center", fontSize: 13, color: "#aaa", marginBottom: 2 }}>
+                  {[eventInfo.event, eventInfo.site, eventInfo.date].filter(Boolean).join(" • ")}
                 </div>
               )}
+              {/* Player names above/below board depending on orientation */}
+              <div style={{ textAlign: "center", fontWeight: "bold", marginBottom: 8, fontSize: 18 }}>
+                {boardOrientation === "white"
+                  ? `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`
+                  : `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`}
+              </div>
+              <Chessboard
+                boardWidth={isMobileLayout ? Math.min(window.innerWidth - 32, 420) : boardWidth}
+                options={{
+                  position: game.fen(),            // v5: drive board via options.position
+                  boardOrientation,                // v5: orientation in options
+                  animationDurationInMs: 140,
+                  customSquareStyles,
+                  onPieceDrop: (payload) => {
+                    // v5 passes a single object; normalize to (from, to, piece)
+                    const from = payload?.sourceSquare ?? payload?.from ?? payload?.source ?? payload?.startSquare;
+                    const to   = payload?.targetSquare ?? payload?.to   ?? payload?.target ?? payload?.endSquare;
+                    const piece = payload?.piece ?? payload?.pieceId ?? payload?.pieceType;
+                    return onPieceDrop(from, to, piece);
+                  }, // v5: handler receives an object
+                }}
+              />
+              <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
+                {boardOrientation === "white"
+                  ? `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`
+                  : `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`}
+              </div>
             </div>
-          </div>
-        </aside>
+
+            {/* Move list: below board on mobile, right on desktop */}
+            <aside
+              style={{
+                width: isMobileLayout ? "100%" : SIDE_W,
+                height: isMobileLayout ? "auto" : boardWidth,
+                flex: "0 0 auto",
+                display: "flex",
+                alignItems: "stretch",
+                marginTop: isMobileLayout ? 16 : 0,
+              }}
+            >
+              <div
+                style={{
+                  border: "1px solid #2a2a2a",
+                  borderRadius: 8,
+                  background: "#111",
+                  color: "#eee",
+                  height: "100%",
+                  width: "100%",
+                  padding: 8,
+                  display: "flex",
+                  flexDirection: "column",   // header fixed, list scrolls
+                }}
+              >
+                {/* Step controls (never scroll) */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  <button onClick={stepBack}    disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Step back (←)">◀</button>
+                  <button onClick={stepForward} disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Step forward (→)">▶</button>
+                  <button onClick={goStart}     disabled={!canBack}    style={{ opacity: canBack ? 1 : 0.5 }} title="Go to start (Home)">⏮</button>
+                  <button onClick={goLatest}    disabled={!canForward} style={{ opacity: canForward ? 1 : 0.5 }} title="Go to latest (End)">⏭</button>
+                </div>
+
+                <div style={{ fontWeight: 600, margin: "0 0 8px 0" }}>Moves</div>
+
+                {/* Scrollable move list only (custom number column to avoid clipping) */}
+                <div
+                  ref={scrollRef}
+                  style={{
+                    flex: "1 1 auto",
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    minHeight: 0,
+                  }}
+                >
+                  {pairs.length === 0 ? (
+                    <div style={{ color: "#999" }}>No moves yet.</div>
+                  ) : (
+                    <div
+                      role="list"
+                      aria-label="Moves"
+                      // ...existing code...
+                    >
+                      {/* ...existing code... */}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
       </div>
 
       {/* FEN + PGN Loaders */}
