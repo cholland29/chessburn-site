@@ -359,13 +359,93 @@ export default function App() {
     } catch {}
   }
 
-  // Last-move highlight (per-square styles)
-  const customSquareStyles = lastMove
-    ? {
+  // --- Chessboard v5 migration ---
+  const chessRef = useRef(new Chess(baseFen));
+  const [chessPosition, setChessPosition] = useState(baseFen);
+  const [moveFrom, setMoveFrom] = useState("");
+  const [squareStyles, setSquareStyles] = useState({});
+
+  // Sync chessRef and position on FEN/PGN load/reset
+  useEffect(() => {
+    chessRef.current = new Chess(baseFen);
+    setChessPosition(baseFen);
+    setMoveFrom("");
+    setSquareStyles({});
+  }, [baseFen]);
+
+  // Last-move highlight (yellow/green)
+  useEffect(() => {
+    if (lastMove) {
+      setSquareStyles(styles => ({
+        ...styles,
         [lastMove.from]: { background: "radial-gradient(circle, rgba(255,215,0,.45) 36%, transparent 40%)" },
         [lastMove.to]:   { background: "radial-gradient(circle, rgba(50,205,50,.45) 36%, transparent 40%)" },
-      }
-    : {};
+      }));
+    }
+  }, [lastMove]);
+
+  // Get move options for a square (show valid moves)
+  function getMoveOptions(square) {
+    const moves = chessRef.current.moves({ square, verbose: true });
+    if (moves.length === 0) {
+      setSquareStyles({});
+      return false;
+    }
+    const newSquares = {};
+    for (const move of moves) {
+      newSquares[move.to] = {
+        background: chessRef.current.get(move.to) && chessRef.current.get(move.to)?.color !== chessRef.current.get(square)?.color
+          ? 'radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)'
+          : 'radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)',
+        borderRadius: '50%'
+      };
+    }
+    newSquares[square] = { background: 'rgba(255, 255, 0, 0.4)' };
+    setSquareStyles(newSquares);
+    return true;
+  }
+
+  // Click-to-move handler
+  function onSquareClick(square, piece) {
+    if (!moveFrom && piece) {
+      const hasMoveOptions = getMoveOptions(square);
+      if (hasMoveOptions) setMoveFrom(square);
+      return;
+    }
+    const moves = chessRef.current.moves({ square: moveFrom, verbose: true });
+    const foundMove = moves.find(m => m.from === moveFrom && m.to === square);
+    if (!foundMove) {
+      const hasMoveOptions = getMoveOptions(square);
+      setMoveFrom(hasMoveOptions ? square : "");
+      return;
+    }
+    try {
+      chessRef.current.move({ from: moveFrom, to: square, promotion: 'q' });
+      setChessPosition(chessRef.current.fen());
+      setMoveFrom("");
+      setSquareStyles({});
+      setLastMove({ from: moveFrom, to: square });
+    } catch {
+      const hasMoveOptions = getMoveOptions(square);
+      if (hasMoveOptions) setMoveFrom(square);
+      return;
+    }
+  }
+
+  // Drag-and-drop handler
+  function onPieceDrop(sourceSquare, targetSquare, piece) {
+    if (!targetSquare) return false;
+    try {
+      chessRef.current.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+      setChessPosition(chessRef.current.fen());
+      setMoveFrom("");
+      setSquareStyles({});
+      setLastMove({ from: sourceSquare, to: targetSquare });
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   // Build SAN pairs for the move list
   const pairs = [];
@@ -425,20 +505,18 @@ export default function App() {
                   : `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`}
               </div>
               <Chessboard
+                id="main-board"
+                position={chessPosition}
+                boardOrientation={boardOrientation}
+                animationDurationInMs={140}
+                squareStyles={squareStyles}
+                onPieceDrop={({ sourceSquare, targetSquare, piece }) =>
+                  onPieceDrop(sourceSquare, targetSquare, piece)
+                }
+                onSquareClick={({ square, piece }) =>
+                  onSquareClick(square, piece)
+                }
                 boardWidth={isMobileLayout ? Math.min(window.innerWidth - 32, 420) : boardWidth}
-                options={{
-                  position: game.fen(),            // v5: drive board via options.position
-                  boardOrientation,                // v5: orientation in options
-                  animationDurationInMs: 140,
-                  customSquareStyles,
-                  onPieceDrop: (payload) => {
-                    // v5 passes a single object; normalize to (from, to, piece)
-                    const from = payload?.sourceSquare ?? payload?.from ?? payload?.source ?? payload?.startSquare;
-                    const to   = payload?.targetSquare ?? payload?.to   ?? payload?.target ?? payload?.endSquare;
-                    const piece = payload?.piece ?? payload?.pieceId ?? payload?.pieceType;
-                    return onPieceDrop(from, to, piece);
-                  }, // v5: handler receives an object
-                }}
               />
               <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
                 {boardOrientation === "white"
