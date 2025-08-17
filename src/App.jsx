@@ -25,8 +25,6 @@ const TEST_FENS = [
 ];
 
 export default function App() {
-  // Piece selection for tap-to-move
-  const [selectedSquare, setSelectedSquare] = useState(null);
   // Responsive layout: stack board and move list vertically on mobile
   const [isMobileLayout, setIsMobileLayout] = useState(window.innerWidth < 600);
   useEffect(() => {
@@ -429,61 +427,17 @@ export default function App() {
               <Chessboard
                 boardWidth={isMobileLayout ? Math.min(window.innerWidth - 32, 420) : boardWidth}
                 options={{
-                  position: game.fen(),
-                  boardOrientation,
+                  position: game.fen(),            // v5: drive board via options.position
+                  boardOrientation,                // v5: orientation in options
                   animationDurationInMs: 140,
-                  customSquareStyles: {
-                    ...customSquareStyles,
-                    ...(selectedSquare ? {
-                      [selectedSquare]: {
-                        boxShadow: '0 0 0 4px #00bfff inset',
-                        background: 'radial-gradient(circle, rgba(0,191,255,.25) 36%, transparent 40%)'
-                      }
-                    } : {})
-                  },
+                  customSquareStyles,
                   onPieceDrop: (payload) => {
-                    // ...existing code...
+                    // v5 passes a single object; normalize to (from, to, piece)
                     const from = payload?.sourceSquare ?? payload?.from ?? payload?.source ?? payload?.startSquare;
                     const to   = payload?.targetSquare ?? payload?.to   ?? payload?.target ?? payload?.endSquare;
                     const piece = payload?.piece ?? payload?.pieceId ?? payload?.pieceType;
-                    setSelectedSquare(null); // clear selection after drag
                     return onPieceDrop(from, to, piece);
-                  },
-                  onSquareClick: (square) => {
-                    // Get piece on square
-                    const pieceObj = game.get(square);
-                    const turn = game.turn();
-                    // If no piece selected
-                    if (!selectedSquare) {
-                      if (pieceObj && pieceObj.color === turn) {
-                        setSelectedSquare(square);
-                      }
-                      return;
-                    }
-                    // If clicking same square, deselect
-                    if (selectedSquare === square) {
-                      setSelectedSquare(null);
-                      return;
-                    }
-                    // If clicking another piece of same color, select that
-                    if (pieceObj && pieceObj.color === turn) {
-                      setSelectedSquare(square);
-                      return;
-                    }
-                    // Try to move selected piece to clicked square
-                    const move = game.move({ from: selectedSquare, to: square });
-                    if (move) {
-                      // Update game state as needed (simulate your move logic)
-                      setMoves([...moves, move.san]);
-                      setCurrentPly(moves.length + 1);
-                      setGame(new Chess(game.fen()));
-                      setSelectedSquare(null);
-                      setLastMove({ from: move.from, to: move.to });
-                    } else {
-                      // Invalid move, just deselect
-                      setSelectedSquare(null);
-                    }
-                  },
+                  }, // v5: handler receives an object
                 }}
               />
               <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
