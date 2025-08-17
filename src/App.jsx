@@ -76,16 +76,33 @@ export default function App() {
     catch (e) { return { valid: false, error: e?.message || "Invalid FEN" }; }
   }
 
+  // Cache for positions at each ply to optimize replay
+  const positionCacheRef = useRef(new Map());
+
   function positionAtPly(ply) {
+    // If cached, return directly
+    if (positionCacheRef.current.has(ply)) {
+      const cached = positionCacheRef.current.get(ply);
+      return { ch: cached.ch, lm: cached.lm };
+    }
+    // Otherwise, compute and cache
     const ch = new Chess(baseFen);
-    for (let i = 0; i < Math.min(ply, moves.length); i++) ch.move(moves[i]);
-    const hist = ch.history({ verbose: true });
-    const lm = hist.length ? { from: hist[hist.length - 1].from, to: hist[hist.length - 1].to } : null;
+    let lm = null;
+    for (let i = 0; i < Math.min(ply, moves.length); i++) {
+      const move = ch.move(moves[i]);
+      if (move) lm = { from: move.from, to: move.to };
+    }
+    positionCacheRef.current.set(ply, { ch, lm });
     return { ch, lm };
   }
 
+  // Clear cache when baseFen or moves change
+  useEffect(() => {
+    positionCacheRef.current = new Map();
+  }, [baseFen, moves]);
+
   function jumpToPly(ply) {
-    const { ch, lm } = positionAtPly(ply);
+    const { ch, lm } = getPositionAtPly(ply);
     setGame(ch);
     setFenText(ch.fen());
     setCurrentPly(ply);
@@ -226,6 +243,40 @@ export default function App() {
     }
   }
 
+  // handle piece drop
+  function onPieceDrop( sourceSquare, targetSquare ) {
+    
+    // type narrow targetSquare potentially being null (e.g. if dropped off board)
+    if (!targetSquare) {
+      return false;
+    }
+
+    // try to make the move according to chess.js logic
+    try {
+      chessGame.move({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: 'q' // always promote to a queen for example simplicity
+      });
+
+      // update the position state upon successful move to trigger a re-render of the chessboard
+      setChessPosition(chessGame.fen());
+
+      // clear moveFrom and optionSquares
+      setMoveFrom('');
+      setOptionSquares({});
+
+      // make random cpu move after a short delay
+      setTimeout(makeRandomMove, 500);
+
+      // return true as the move was successful
+      return true;
+    } catch {
+      // return false as the move was not successful
+      return false;
+    }
+  }
+
   // ==== Commands ====
   function reset() {
   const start = new Chess();
@@ -333,7 +384,7 @@ export default function App() {
     setBaseFen(base);
     setMoves(applied);
     setCurrentPly(0);
-    const { ch: startGame, lm: startMove } = positionAtPly(0);
+    const { ch: startGame, lm: startMove } = getPositionAtPly(0);
     setGame(startGame);
     setFenText(startGame.fen());
     setLastMove(startMove);
@@ -504,20 +555,21 @@ export default function App() {
                   ? `${blackName}${blackTitle ? ` [${blackTitle}]` : ""}${blackElo ? ` (${blackElo})` : ""}`
                   : `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`}
               </div>
-              <Chessboard
-                id="main-board"
-                position={chessPosition}
-                boardOrientation={boardOrientation}
-                animationDurationInMs={140}
-                squareStyles={squareStyles}
-                onPieceDrop={({ sourceSquare, targetSquare, piece }) =>
-                  onPieceDrop(sourceSquare, targetSquare, piece)
-                }
-                onSquareClick={({ square, piece }) =>
-                  onSquareClick(square, piece)
-                }
-                boardWidth={isMobileLayout ? Math.min(window.innerWidth - 32, 420) : boardWidth}
-              />
+              {(() => {
+                const chessboardOptions = {
+                  id: "main-board",
+                  position: chessPosition,
+                  boardOrientation,
+                  animationDurationInMs: 140,
+                  squareStyles,
+                  onPieceDrop: ({ sourceSquare, targetSquare, piece }) =>
+                    onPieceDrop(sourceSquare, targetSquare, piece),
+                  onSquareClick: ({ square, piece }) =>
+                    onSquareClick(square, piece),
+                  boardWidth: isMobileLayout ? Math.min(window.innerWidth - 32, 420) : boardWidth
+                };
+                return <Chessboard options={chessboardOptions} />;
+              })()}
               <div style={{ textAlign: "center", fontWeight: "bold", marginTop: 8, fontSize: 18 }}>
                 {boardOrientation === "white"
                   ? `${whiteName}${whiteTitle ? ` [${whiteTitle}]` : ""}${whiteElo ? ` (${whiteElo})` : ""}`
